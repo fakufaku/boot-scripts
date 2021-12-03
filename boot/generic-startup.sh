@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+echo "generic-board-startup: start"
+
 #eMMC flasher just exited single user mode via: [exec /sbin/init]
 #as we can't shudown properly in single user mode..
 unset are_we_flasher
@@ -9,6 +11,8 @@ if [ ! "x${are_we_flasher}" = "x" ] ; then
 	exit
 fi
 
+if [ ! -f /lib/systemd/system/regenerate_ssh_host_keys.service ] ; then
+echo "generic-board-startup: ssh"
 #Regenerate ssh host keys
 if [ -f /etc/ssh/ssh.regenerate ] ; then
 	echo "generic-board-startup: regenerating ssh keys"
@@ -38,7 +42,9 @@ if [ -f /etc/ssh/ssh.regenerate ] ; then
 		systemctl start sshd
 	fi
 fi
+fi
 
+echo "generic-board-startup: efi"
 if [ -f /boot/efi/EFI/efi.gen ] ; then
 	if [ -f /usr/sbin/grub-install ] ; then
 		echo "grub-install --efi-directory=/boot/efi/ --target=arm-efi --no-nvram"
@@ -52,14 +58,14 @@ if [ -f /boot/efi/EFI/efi.gen ] ; then
 fi
 
 #Resize drive when requested
-if [ -f /resizerootfs ] ; then
+if [ -f /var/resizerootfs ] ; then
 	echo "generic-board-startup: resizerootfs"
 
 	unset is_btrfs
 	is_btrfs=$(cat /proc/cmdline | grep btrfs || true)
 
 	if [ "x${is_btrfs}" = "x" ] ; then
-		drive=$(cat /resizerootfs)
+		drive=$(cat /var/resizerootfs)
 		if [ ! "x${drive}" = "x" ] ; then
 			echo "generic-board-startup: "
 			if [ "x${drive}" = "x/dev/mmcblk0" ] || [ "x${drive}" = "x/dev/mmcblk1" ] ; then
@@ -75,34 +81,17 @@ if [ -f /resizerootfs ] ; then
 		btrfs filesystem resize max / >/var/log/resize.log 2>&1 || true
 	fi
 
-	rm -rf /resizerootfs || true
+	rm -rf /var/resizerootfs || true
 	sync
 fi
 
-if [ -d /sys/class/gpio/ ] ; then
-	/bin/chgrp -R gpio /sys/class/gpio/ || true
-	/bin/chmod -R g=u /sys/class/gpio/ || true
-
-	/bin/chgrp -R gpio /dev/gpiochip* || true
-	/bin/chmod -R g=u /dev/gpiochip* || true
-fi
-
-if [ -d /sys/class/leds ] ; then
-	/bin/chgrp -R gpio /sys/class/leds/ || true
-	/bin/chmod -R g=u /sys/class/leds/ || true
-
-	if [ -d /sys/devices/platform/leds/leds/ ] ; then
-		/bin/chgrp -R gpio /sys/devices/platform/leds/leds/ || true
-		/bin/chmod -R g=u  /sys/devices/platform/leds/leds/ || true
-	fi
-fi
-
+echo "generic-board-startup: model"
 if [ -f /proc/device-tree/model ] ; then
 	board=$(cat /proc/device-tree/model | sed "s/ /_/g")
 	echo "generic-board-startup: [model=${board}]"
 
 	case "${board}" in
-	TI_AM335x*|Arrow_BeagleBone_Black_Industrial|SanCloud_BeagleBone_Enhanced|Octavo_Systems*)
+	TI_AM335x*|Arrow_BeagleBone_Black_Industrial|SanCloud_BeagleBone_Enhanced|Octavo_Systems*|SeeedStudio*)
 		script="am335x_evm.sh"
 		;;
 	TI_AM5728*)

@@ -5,13 +5,13 @@
 # Source it like this:
 # source $(dirname "$0")/functions.sh
 
-version_message="1.20180412: all ssh regneration override..."
+version_message="1.20200709: Fix v5.4.x eeprom read..."
 emmcscript="cmdline=init=/opt/scripts/tools/eMMC/$(basename $0)"
 
 #This is just a backup-backup-backup for old images...
 #https://rcn-ee.com/repos/bootloader/am335x_evm/
-http_spl="MLO-am335x_evm-v2018.09-r7"
-http_uboot="u-boot-am335x_evm-v2018.09-r7.img"
+http_spl="MLO-am335x_evm-v2019.04-r13"
+http_uboot="u-boot-am335x_evm-v2019.04-r13.img"
 
 set -o errtrace
 
@@ -339,11 +339,11 @@ find_root_drive(){
 		proc_cmdline=$(cat /proc/cmdline | tr -d '\000')
 		echo_broadcast "==> ${proc_cmdline}"
 		generate_line 40
-		root_drive=$(cat /proc/cmdline | tr -d '\000' | sed 's/ /\n/g' | grep root=UUID= | awk -F 'root=' '{print $2}' || true)
+		root_drive=$(cat /proc/cmdline | tr -d '\000' | sed 's/ /\n/g' | grep ^root=UUID= | awk -F 'root=' '{print $2}' || true)
 		if [ ! "x${root_drive}" = "x" ] ; then
 			root_drive=$(/sbin/findfs ${root_drive} || true)
 		else
-			root_drive=$(cat /proc/cmdline | sed 's/ /\n/g' | grep root= | awk -F 'root=' '{print $2}' || true)
+			root_drive=$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root= | awk -F 'root=' '{print $2}' || true)
 		fi
 		echo_broadcast "==> root_drive=[${root_drive}]"
 	else
@@ -458,37 +458,41 @@ write_failure() {
 }
 
 do_we_have_eeprom() {
-  unset got_eeprom
-  #v8 of nvmem...
-  if [ -f /sys/bus/nvmem/devices/at24-0/nvmem ] && [ "x${got_eeprom}" = "x" ] ; then
-    eeprom="/sys/bus/nvmem/devices/at24-0/nvmem"
-    eeprom_location="/sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/at24-0/nvmem"
-    got_eeprom="true"
-  fi
+	unset got_eeprom
+	#v8 of nvmem...
+	if [ -f /sys/bus/nvmem/devices/at24-0/nvmem ] && [ "x${got_eeprom}" = "x" ] ; then
+		eeprom="/sys/bus/nvmem/devices/at24-0/nvmem"
+		eeprom_location="/sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/at24-0/nvmem"
+		got_eeprom="true"
+	fi
 
-  #pre-v8 of nvmem...
-  if [ -f /sys/class/nvmem/at24-0/nvmem ] && [ "x${got_eeprom}" = "x" ] ; then
-    eeprom="/sys/class/nvmem/at24-0/nvmem"
-    eeprom_location="/sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/nvmem/at24-0/nvmem"
-    got_eeprom="true"
-  fi
+	#pre-v8 of nvmem...
+	if [ -f /sys/class/nvmem/at24-0/nvmem ] && [ "x${got_eeprom}" = "x" ] ; then
+		eeprom="/sys/class/nvmem/at24-0/nvmem"
+		eeprom_location="/sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/nvmem/at24-0/nvmem"
+		got_eeprom="true"
+	fi
 
-  #eeprom 3.8.x & 4.4 with eeprom-nvmem patchset...
-  if [ -f /sys/bus/i2c/devices/0-0050/eeprom ] && [ "x${got_eeprom}" = "x" ] ; then
-    eeprom="/sys/bus/i2c/devices/0-0050/eeprom"
+	#eeprom 3.8.x & 4.4 with eeprom-nvmem patchset...
+	if [ -f /sys/bus/i2c/devices/0-0050/eeprom ] && [ "x${got_eeprom}" = "x" ] ; then
+		eeprom="/sys/bus/i2c/devices/0-0050/eeprom"
 
-    if [ -f /sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/eeprom ] ; then
-      eeprom_location="/sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/eeprom"
-    else
-      eeprom_location=$(ls /sys/devices/ocp*/44e0b000.i2c/i2c-0/0-0050/eeprom 2> /dev/null)
-    fi
+		if [ -f /sys/devices/platform/ocp/44c00000.interconnect/44c00000.interconnect:segment@200000/44e0b000.target-module/44e0b000.i2c/i2c-0/0-0050/eeprom ] ; then
+			eeprom_location="/sys/devices/platform/ocp/44c00000.interconnect/44c00000.interconnect:segment@200000/44e0b000.target-module/44e0b000.i2c/i2c-0/0-0050/eeprom"
+		else
+			if [ -f /sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/eeprom ] ; then
+				eeprom_location="/sys/devices/platform/ocp/44e0b000.i2c/i2c-0/0-0050/eeprom"
+			else
+				eeprom_location=$(ls /sys/devices/ocp*/44e0b000.i2c/i2c-0/0-0050/eeprom 2> /dev/null)
+			fi
+		fi
 
-    got_eeprom="true"
-  fi
+		got_eeprom="true"
+	fi
 }
 
 do_we_have_am335x_eeprom() {
-  do_we_have_eeprom
+	do_we_have_eeprom
 }
 
 check_am335x_eeprom() {
@@ -532,20 +536,24 @@ check_am335x_eeprom() {
 }
 
 check_eeprom() {
-  check_am335x_eeprom
+	check_am335x_eeprom
 }
 
 do_we_have_am57xx_eeprom() {
-  unset got_eeprom
-  if [ -f /sys/bus/i2c/devices/0-0050/eeprom ] && [ "x${got_eeprom}" = "x" ] ; then
-    eeprom="/sys/bus/i2c/devices/0-0050/eeprom"
+	unset got_eeprom
+	if [ -f /sys/bus/i2c/devices/0-0050/eeprom ] && [ "x${got_eeprom}" = "x" ] ; then
+		eeprom="/sys/bus/i2c/devices/0-0050/eeprom"
 
-    if [ -f /sys/devices/platform/44000000.ocp/48070000.i2c/i2c-0/0-0050/eeprom ] ; then
-      eeprom_location="/sys/devices/platform/44000000.ocp/48070000.i2c/i2c-0/0-0050/eeprom"
-    fi
+		if [ -f /sys/devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48070000.target-module/48070000.i2c/i2c-0/0-0050/eeprom ] ; then
+			eeprom_location="/sys/devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48070000.target-module/48070000.i2c/i2c-0/0-0050/eeprom"
+		else
+			if [ -f /sys/devices/platform/44000000.ocp/48070000.i2c/i2c-0/0-0050/eeprom ] ; then
+				eeprom_location="/sys/devices/platform/44000000.ocp/48070000.i2c/i2c-0/0-0050/eeprom"
+			fi
+		fi
 
-    got_eeprom="true"
-  fi
+		got_eeprom="true"
+	fi
 }
 
 check_am57xx_eeprom() {
@@ -1012,9 +1020,10 @@ _copy_rootfs() {
 	#disable_ssh_regeneration sourced from SOC.sh
 	if [ ! "x${disable_ssh_regeneration}" = "xtrue" ] ; then
 		if [ -d ${tmp_rootfs_dir}/etc/ssh/ ] ; then
-			echo_broadcast "==> Applying SSH Key Regeneration trick"
-			#ssh keys will now get regenerated on the next bootup
+			echo_broadcast "==> Applying SSH Key and machine-id Regeneration trick"
+			#ssh keys and machine-id will now get regenerated on the next bootup
 			touch ${tmp_rootfs_dir}/etc/ssh/ssh.regenerate
+			rm -f ${tmp_rootfs_dir}/etc/machine-id || true
 			flush_cache
 		fi
 	fi
@@ -1276,6 +1285,7 @@ __EOF__
     boot_partition="${destination}p1"
     rootfs_partition="${destination}p2"
   else
+    conf_rootfs_partition_size=${conf_rootfs_partition_size:-""}
     conf_boot_startmb=${conf_boot_startmb:-"4"}
     sfdisk_fstype=${sfdisk_fstype:-"L"}
     if [ "x${sfdisk_fstype}" = "x0x83" ] ; then
@@ -1307,7 +1317,7 @@ __EOF__
     echo_broadcast "==> Partitionning"
     generate_line 60
     LC_ALL=C sfdisk ${sfdisk_options} "${destination}" <<-__EOF__
-${sfdisk_boot_startmb},,${sfdisk_fstype},*
+${sfdisk_boot_startmb},${conf_rootfs_partition_size},${sfdisk_fstype},*
 __EOF__
     generate_line 60
     flush_cache

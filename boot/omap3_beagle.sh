@@ -1,6 +1,6 @@
 #!/bin/sh -e
 #
-# Copyright (c) 2013-2017 Robert Nelson <robertcnelson@gmail.com>
+# Copyright (c) 2013-2020 Robert Nelson <robertcnelson@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,20 @@
 
 log="omap3_beagle:"
 
+if [ -f /etc/rcn-ee.conf ] ; then
+	. /etc/rcn-ee.conf
+fi
+
+if [ -f /etc/default/bb-boot ] ; then
+	. /etc/default/bb-boot
+
+	if [ "x${USB_CONFIGURATION}" = "x" ] ; then
+		echo "${log} Updating /etc/default/bb-boot"
+		cp -v /opt/scripts/boot/default/bb-boot /etc/default/bb-boot || true
+		. /etc/default/bb-boot
+	fi
+fi
+
 #Bus 005 Device 014: ID 1d6b:0104 Linux Foundation Multifunction Composite Gadget
 usb_gadget="/sys/kernel/config/usb_gadget"
 
@@ -40,6 +54,7 @@ usb_product="USB Device"
 
 #udhcpd gets started at bootup, but we need to wait till g_multi is loaded, and we run it manually...
 if [ -f /var/run/udhcpd.pid ] ; then
+	echo "${log} [/etc/init.d/udhcpd stop]"
 	/etc/init.d/udhcpd stop || true
 fi
 
@@ -110,23 +125,50 @@ use_libcomposite () {
 use_libcomposite
 
 if [ -f /usr/bin/amixer ] ; then
-	echo "${log} Enabling Headset (Audio Out):"
-	echo "${log} [amixer sset 'DAC1 Digital Fine' 40]:"
 	amixer -c0 sset 'DAC1 Digital Fine' 40
-	echo "${log} [amixer sset 'Headset' 2]:"
 	amixer -c0 sset 'Headset' 2
-	echo "${log} [amixer sset 'HeadsetL Mixer AudioL1' on]:"
 	amixer -c0 sset 'HeadsetL Mixer AudioL1' on
-	echo "${log} [amixer sset 'HeadsetR Mixer AudioR1' on]:"
 	amixer -c0 sset 'HeadsetR Mixer AudioR1' on
 fi
 
-#Just Cleanup /etc/issue, systemd starts up tty before these are updated...
-sed -i -e '/Address/d' /etc/issue || true
+if [ "x${abi}" = "xab" ] ; then
+	#Just Cleanup /etc/issue, systemd starts up tty before these are updated...
+	sed -i -e '/Address/d' /etc/issue || true
+fi
 
 check_getty_tty=$(systemctl is-active serial-getty@ttyGS0.service || true)
 if [ "x${check_getty_tty}" = "xinactive" ] ; then
 	systemctl restart serial-getty@ttyGS0.service || true
 fi
 
+#Disabling Non-Valid Services..
+if [ -f /etc/systemd/system/multi-user.target.wants/bb-bbai-tether.service ] ; then
+	echo "${log} systemctl: disable bb-bbai-tether.service"
+	systemctl disable bb-bbai-tether.service || true
+fi
+if [ -f /etc/systemd/system/basic.target.wants/cmemk-module.service ] ; then
+	echo "${log} systemctl: cmemk-module.service"
+	systemctl disable cmemk-module.service || true
+fi
+if [ -f /etc/systemd/system/basic.target.wants/ti-mct-daemon.service ] ; then
+	echo "${log} systemctl: ti-mct-daemon.service"
+	systemctl disable ti-mct-daemon.service || true
+fi
+if [ -f /etc/systemd/system/multi-user.target.wants/robotcontrol.service ] ; then
+	echo "${log} systemctl: disable robotcontrol.service"
+	systemctl disable robotcontrol.service || true
+	rm -f /etc/modules-load.d/robotcontrol_modules.conf || true
+fi
+if [ -f /etc/systemd/system/multi-user.target.wants/rc_battery_monitor.service ] ; then
+	echo "${log} systemctl: rc_battery_monitor.service"
+	systemctl disable rc_battery_monitor.service || true
+fi
+if [ -f /etc/systemd/system/multi-user.target.wants/bb-wl18xx-bluetooth.service ] ; then
+	echo "${log} systemctl: bb-wl18xx-bluetooth.service"
+	systemctl disable bb-wl18xx-bluetooth.service || true
+fi
+if [ -f /etc/systemd/system/multi-user.target.wants/bb-wl18xx-wlan0.service ] ; then
+	echo "${log} systemctl: bb-wl18xx-wlan0.service"
+	systemctl disable bb-wl18xx-wlan0.service || true
+fi
 #

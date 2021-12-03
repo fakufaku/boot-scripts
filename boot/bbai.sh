@@ -1,16 +1,37 @@
 #!/bin/sh -e
 #
 
+disable_connman_dnsproxy () {
+	if [ -f /lib/systemd/system/connman.service ] ; then
+		#netstat -tapnd
+		unset check_connman
+		check_connman=$(cat /lib/systemd/system/connman.service | grep ExecStart | grep nodnsproxy || true)
+		if [ "x${check_connman}" = "x" ] ; then
+			systemctl stop connman.service || true
+			sed -i -e 's:connmand -n:connmand -n --nodnsproxy:g' /lib/systemd/system/connman.service || true
+			systemctl daemon-reload || true
+			systemctl start connman.service || true
+		fi
+	fi
+}
+
+log="BeagleBone-AI:"
+
 if [ -f /etc/rcn-ee.conf ] ; then
 	. /etc/rcn-ee.conf
 fi
 
 if [ -f /etc/default/bb-boot ] ; then
 	unset USB_NETWORK_DISABLED
-	. /etc/default/bb-boot
-fi
 
-log="BeagleBone-AI:"
+	. /etc/default/bb-boot
+
+	if [ "x${USB_CONFIGURATION}" = "x" ] ; then
+		echo "${log} Updating /etc/default/bb-boot"
+		cp -v /opt/scripts/boot/default/bb-boot /etc/default/bb-boot || true
+		. /etc/default/bb-boot
+	fi
+fi
 
 #Make sure the cpu_thermal zone is enabled...
 if [ -f /sys/class/thermal/thermal_zone0/mode ] ; then
@@ -43,6 +64,9 @@ usb_ms_nofua=1
 usb_image_file="/var/local/bb_usb_mass_storage.img"
 has_img_file="true"
 
+#Broken today...
+usb_serial_gadget="disable"
+
 usb_iserialnumber="1234BBBK5678"
 #usb_iproduct="BeagleBoneAI"
 usb_iproduct="BeagleBone"
@@ -50,110 +74,125 @@ usb_imanufacturer="BeagleBoard.org"
 
 #mac address:
 #cpsw_0_mac = eth0 - (from AM57x eeprom)
-#cpsw_1_mac = usb0 (BeagleBone Side) (cpsw_0_mac + 2)
-#cpsw_2_mac = usb0 (USB host, pc side) (cpsw_0_mac + 3)
-#cpsw_3_mac = usb1 (BeagleBone Side) (cpsw_0_mac + 4)
-#cpsw_4_mac = usb1 (USB host, pc side) (cpsw_0_mac + 5)
+#cpsw_1_mac = usb0 (BeagleBone Side)
+#cpsw_2_mac = usb0 (USB host, pc side)
+#cpsw_3_mac = usb1 (BeagleBone Side)
+#cpsw_4_mac = usb1 (USB host, pc side)
 
 mac_address="/proc/device-tree/ocp/ethernet@48484000/slave@48480200/mac-address"
 if [ -f ${mac_address} ] && [ -f /usr/bin/hexdump ] ; then
-	cpsw_0_mac=$(hexdump -v -e '1/1 "%02X" ":"' ${mac_address} | sed 's/.$//')
+	mac_addr0=$(hexdump -v -e '1/1 "%02X" ":"' ${mac_address} | sed 's/.$//')
 
-	#Some devices are showing a blank cpsw_0_mac [00:00:00:00:00:00], let's fix that up...
-	if [ "x${cpsw_0_mac}" = "x00:00:00:00:00:00" ] ; then
-		cpsw_0_mac="1C:BA:8C:A2:ED:68"
+	#Some devices are showing a blank mac_addr0 [00:00:00:00:00:00], let's fix that up...
+	if [ "x${mac_addr0}" = "x00:00:00:00:00:00" ] ; then
+		mac_addr0="1C:BA:8C:A2:ED:68"
 	fi
 else
 	#todo: generate random mac... (this is a development tre board in the lab...)
-	cpsw_0_mac="1C:BA:8C:A2:ED:68"
+	mac_addr0="1C:BA:8C:A2:ED:68"
 fi
 
-unset use_cached_bb_mac
-if [ -f /etc/cpsw_0_mac ] ; then
-	unset test_cpsw_0_mac
-	test_cpsw_0_mac=$(cat /etc/cpsw_0_mac)
-	if [ "x${cpsw_0_mac}" = "x${test_cpsw_0_mac}" ] ; then
-		use_cached_bb_mac="true"
-	else
-		echo "${cpsw_0_mac}" > /etc/cpsw_0_mac || true
-	fi
-else
-	echo "${cpsw_0_mac}" > /etc/cpsw_0_mac || true
-fi
+mac_addr0_octet_1_5=$(echo ${mac_addr0} | cut -c 1-14)
+mac_addr0_octet_6=$(echo ${mac_addr0} | awk -F ':' '{print $6}')
 
-if [ "x${use_cached_bb_mac}" = "xtrue" ] && [ -f /etc/cpsw_1_mac ] ; then
+if [ -f /usr/bin/bb_generate_mac.sh ] ; then
+	/usr/bin/bb_generate_mac.sh --mac ${mac_addr0}
 	cpsw_1_mac=$(cat /etc/cpsw_1_mac)
-else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		bb_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 102" | bc)
-
-		cpsw_1_mac=${mac_0_prefix}:$(echo ${bb_res} | cut -c 2-3)
-	else
-		cpsw_1_mac="1C:BA:8C:A2:ED:69"
-	fi
-	echo "${cpsw_1_mac}" > /etc/cpsw_1_mac || true
-fi
-
-if [ "x${use_cached_bb_mac}" = "xtrue" ] && [ -f /etc/cpsw_2_mac ] ; then
 	cpsw_2_mac=$(cat /etc/cpsw_2_mac)
-else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		bb_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 103" | bc)
-
-		cpsw_2_mac=${mac_0_prefix}:$(echo ${bb_res} | cut -c 2-3)
-	else
-		cpsw_2_mac="1C:BA:8C:A2:ED:70"
-	fi
-	echo "${cpsw_2_mac}" > /etc/cpsw_2_mac || true
-fi
-
-if [ "x${use_cached_bb_mac}" = "xtrue" ] && [ -f /etc/cpsw_3_mac ] ; then
 	cpsw_3_mac=$(cat /etc/cpsw_3_mac)
-else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		bb_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 104" | bc)
-
-		cpsw_3_mac=${mac_0_prefix}:$(echo ${bb_res} | cut -c 2-3)
-	else
-		cpsw_3_mac="1C:BA:8C:A2:ED:71"
-	fi
-	echo "${cpsw_3_mac}" > /etc/cpsw_3_mac || true
-fi
-
-if [ "x${use_cached_bb_mac}" = "xtrue" ] && [ -f /etc/cpsw_4_mac ] ; then
 	cpsw_4_mac=$(cat /etc/cpsw_4_mac)
+	cpsw_5_mac=$(cat /etc/cpsw_5_mac)
 else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		bb_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 105" | bc)
-
-		cpsw_4_mac=${mac_0_prefix}:$(echo ${bb_res} | cut -c 2-3)
+	unset use_cached_mac_addr
+	if [ -f /etc/cpsw_0_mac ] ; then
+		unset test_cpsw_0_mac
+		test_cpsw_0_mac=$(cat /etc/cpsw_0_mac)
+		if [ "x${mac_addr0}" = "x${test_cpsw_0_mac}" ] ; then
+			use_cached_mac_addr="true"
+		else
+			echo "${mac_addr0}" > /etc/cpsw_0_mac || true
+		fi
 	else
-		cpsw_4_mac="1C:BA:8C:A2:ED:72"
+		echo "${mac_addr0}" > /etc/cpsw_0_mac || true
 	fi
-	echo "${cpsw_4_mac}" > /etc/cpsw_4_mac || true
-fi
 
-echo "${log} cpsw_0_mac: [${cpsw_0_mac}]"
-echo "${log} cpsw_1_mac: [${cpsw_1_mac}]"
-echo "${log} cpsw_2_mac: [${cpsw_2_mac}]"
-echo "${log} cpsw_3_mac: [${cpsw_3_mac}]"
-echo "${log} cpsw_4_mac: [${cpsw_4_mac}]"
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_1_mac ] ; then
+		mac_addr1=$(cat /etc/cpsw_1_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$mac_addr0_octet_6 + 102" | bc)
+
+			mac_addr1=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr1="1C:BA:8C:A2:ED:69"
+		fi
+		echo "${mac_addr1}" > /etc/cpsw_1_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_2_mac ] ; then
+		mac_addr2=$(cat /etc/cpsw_2_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 103" | bc)
+
+			mac_addr2=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr2="1C:BA:8C:A2:ED:70"
+		fi
+		echo "${mac_addr2}" > /etc/cpsw_2_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_3_mac ] ; then
+		mac_addr3=$(cat /etc/cpsw_3_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 104" | bc)
+
+			mac_addr3=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr3="1C:BA:8C:A2:ED:71"
+		fi
+		echo "${mac_addr3}" > /etc/cpsw_3_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_4_mac ] ; then
+		mac_addr4=$(cat /etc/cpsw_4_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 105" | bc)
+
+			mac_addr4=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr4="1C:BA:8C:A2:ED:72"
+		fi
+		echo "${mac_addr4}" > /etc/cpsw_4_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_5_mac ] ; then
+		mac_addr5=$(cat /etc/cpsw_5_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 106" | bc)
+
+			mac_addr5=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr5="1C:BA:8C:A2:ED:73"
+		fi
+		echo "${mac_addr5}" > /etc/cpsw_5_mac || true
+	fi
+
+	echo "${log} cpsw_0_mac: [${mac_addr0}]"
+	echo "${log} cpsw_1_mac: [${mac_addr1}]"
+	echo "${log} cpsw_2_mac: [${mac_addr2}]"
+	echo "${log} cpsw_3_mac: [${mac_addr3}]"
+	echo "${log} cpsw_4_mac: [${mac_addr4}]"
+	echo "${log} cpsw_5_mac: [${mac_addr5}]"
+fi
 
 #udhcpd gets started at bootup, but we need to wait till g_multi is loaded, and we run it manually...
 if [ -f /var/run/udhcpd.pid ] ; then
@@ -244,19 +283,20 @@ run_libcomposite_start () {
 	fi
 
 	if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
-		mkdir -p functions/ecm.usb0
-		echo ${cpsw_3_mac} > functions/ecm.usb0/host_addr
-		echo ${cpsw_4_mac} > functions/ecm.usb0/dev_addr
+		mkdir -p functions/ncm.usb0
+		echo ${cpsw_3_mac} > functions/ncm.usb0/host_addr
+		echo ${cpsw_4_mac} > functions/ncm.usb0/dev_addr
 
 	#if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
-		ln -s functions/ecm.usb0 configs/c.1/
+		ln -s functions/ncm.usb0 configs/c.1/
 	#fi
 
 	fi
 
-	mkdir -p functions/acm.usb0
-
-	ln -s functions/acm.usb0 configs/c.1/
+	if [ "x${usb_serial_gadget}" = "xenable" ] ; then
+		mkdir -p functions/acm.usb0
+		ln -s functions/acm.usb0 configs/c.1/
+	fi
 
 	#ls /sys/class/udc
 	echo 48890000.usb > UDC
@@ -290,32 +330,29 @@ run_libcomposite () {
 
 use_libcomposite () {
 	echo "${log} use_libcomposite"
-	#ls -lha /sys/kernel/*
-	#ls -lha /sys/kernel/config/*
-#	if [ ! -d /sys/kernel/config/usb_gadget/ ] ; then
 
 	until [ -d /sys/class/udc/48890000.usb/ ] ; do
 		sleep 3
 		echo "usb_gadget: waiting for /sys/class/udc/48890000.usb/"
 	done
 
-	echo "${log} modprobe libcomposite"
-	modprobe libcomposite || true
-	if [ -d /sys/module/libcomposite ] ; then
-		#run_libcomposite
-		run_libcomposite_jdk
-		#/bin/bash /opt/scripts/boot/bbai_usb_gadget.sh
+	echo "${log} Looking for libcomposite"
+	if [ -d /sys/kernel/config/usb_gadget/ ] ; then
+		run_libcomposite
 	else
-		if [ -f /sbin/depmod ] ; then
-			/sbin/depmod -a
+		echo "${log} modprobe libcomposite"
+		modprobe libcomposite || true
+		if [ -d /sys/module/libcomposite ] ; then
+			#run_libcomposite
+			run_libcomposite_jdk
+			#/bin/bash /opt/scripts/boot/bbai_usb_gadget.sh
+		else
+			if [ -f /sbin/depmod ] ; then
+				/sbin/depmod -a
+			fi
+			echo "${log} ERROR: [libcomposite didn't load]"
 		fi
-		echo "${log} ERROR: [libcomposite didn't load]"
 	fi
-
-#	echo
-#		echo "${log} libcomposite built-in"
-#		run_libcomposite
-#	fi
 }
 
 use_libcomposite
@@ -325,59 +362,107 @@ if [ -f /var/lib/misc/dnsmasq.leases ] ; then
 	rm -rf /var/lib/misc/dnsmasq.leases || true
 fi
 
-echo "${log} Starting usb0 network"
-# Auto-configuring the usb0 network interface:
-$(dirname $0)/autoconfigure_usb0.sh || true
+		echo "${log} Starting usb0 network"
+		# Auto-configuring the usb0 network interface:
+		if [ -f /usr/bin/autoconfigure_usb0.sh ] ; then
+			/usr/bin/autoconfigure_usb0.sh || true
+		else
+			#Old Path... 2020.02.25
+			$(dirname $0)/autoconfigure_usb0.sh || true
+		fi
 
-echo "${log} Starting usb1 network"
-# Auto-configuring the usb1 network interface:
-$(dirname $0)/autoconfigure_usb1.sh || true
+		echo "${log} Starting usb1 network"
+		# Auto-configuring the usb1 network interface:
+		if [ -f /usr/bin/autoconfigure_usb1.sh ] ; then
+			/usr/bin/autoconfigure_usb1.sh || true
+		else
+			#Old Path... 2020.02.25
+			$(dirname $0)/autoconfigure_usb1.sh || true
+		fi
 
-if [ -d /sys/kernel/config/usb_gadget ] ; then
-	/etc/init.d/udhcpd stop || true
+		if [ -d /sys/kernel/config/usb_gadget ] ; then
+			if [ -f /var/run/udhcpd.pid ] ; then
+				/etc/init.d/udhcpd stop || true
+			fi
 
-	if [ -d /etc/dnsmasq.d/ ] ; then
-		echo "${log} dnsmasq: setting up for usb0/usb1"
-		disable_connman_dnsproxy
+			# do not write if there is a .SoftAp0 file
+			if [ -d /etc/dnsmasq.d/ ] ; then
+				if [ ! -f /etc/dnsmasq.d/.SoftAp0 ] ; then
+					echo "${log} dnsmasq: setting up for usb0/usb1"
+					disable_connman_dnsproxy
 
-		wfile="/etc/dnsmasq.d/SoftAp0"
-		echo "interface=usb0" > ${wfile}
-		echo "interface=usb1" >> ${wfile}
-		echo "port=53" >> ${wfile}
-		echo "dhcp-authoritative" >> ${wfile}
-		echo "domain-needed" >> ${wfile}
-		echo "bogus-priv" >> ${wfile}
-		echo "expand-hosts" >> ${wfile}
-		echo "cache-size=2048" >> ${wfile}
-		echo "dhcp-range=usb0,192.168.7.1,192.168.7.1,2m" >> ${wfile}
-		echo "dhcp-range=usb1,192.168.6.1,192.168.6.1,2m" >> ${wfile}
-		echo "listen-address=127.0.0.1" >> ${wfile}
-		echo "listen-address=192.168.7.2" >> ${wfile}
-		echo "listen-address=192.168.6.2" >> ${wfile}
-		echo "dhcp-option=usb0,3" >> ${wfile}
-		echo "dhcp-option=usb0,6" >> ${wfile}
-		echo "dhcp-option=usb1,3" >> ${wfile}
-		echo "dhcp-option=usb1,6" >> ${wfile}
-		echo "dhcp-leasefile=/var/run/dnsmasq.leases" >> ${wfile}
+					if [ -f /usr/bin/bb_dnsmasq_config.sh ] ; then
+						/usr/bin/bb_dnsmasq_config.sh || true
+					else
+						wfile="/etc/dnsmasq.d/SoftAp0"
+						echo "interface=usb0" > ${wfile}
 
-		systemctl restart dnsmasq || true
-	else
-		echo "${log} ERROR: dnsmasq is not installed"
-	fi
-fi
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "interface=usb1" >> ${wfile}
+						fi
+
+						echo "port=53" >> ${wfile}
+						echo "dhcp-authoritative" >> ${wfile}
+						echo "domain-needed" >> ${wfile}
+						echo "bogus-priv" >> ${wfile}
+						echo "expand-hosts" >> ${wfile}
+						echo "cache-size=2048" >> ${wfile}
+						echo "dhcp-range=usb0,${USB0_SUBNET}.1,${USB0_SUBNET}.1,2m" >> ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "dhcp-range=usb1,${USB1_SUBNET}.1,${USB1_SUBNET}.1,2m" >> ${wfile}
+						fi
+
+						echo "listen-address=127.0.0.1" >> ${wfile}
+						echo "listen-address=${USB0_ADDRESS}" >> ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "listen-address=${USB1_ADDRESS}" >> ${wfile}
+						fi
+
+						echo "dhcp-option=usb0,3" >> ${wfile}
+						echo "dhcp-option=usb0,6" >> ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "dhcp-option=usb1,3" >> ${wfile}
+							echo "dhcp-option=usb1,6" >> ${wfile}
+						fi
+
+						echo "dhcp-leasefile=/var/run/dnsmasq.leases" >> ${wfile}
+					fi
+
+					systemctl restart dnsmasq || true
+				else
+					echo "${log} LOG: dnsmasq is disabled in this script"
+				fi
+			else
+				echo "${log} ERROR: dnsmasq is not installed"
+			fi
+		fi
 
 check_getty_tty=$(systemctl is-active serial-getty@ttyGS0.service || true)
 if [ "x${check_getty_tty}" = "xinactive" ] ; then
 	systemctl restart serial-getty@ttyGS0.service || true
 fi
 
-if [ -f /usr/bin/cpufreq-set ] ; then
-	echo "${log} cpufreq-set -g powersave"
-	/usr/bin/cpufreq-set -g powersave || true
-fi
+#if [ -f /usr/bin/cpufreq-set ] ; then
+#	echo "${log} cpufreq-set -g powersave"
+#	/usr/bin/cpufreq-set -g powersave || true
+#fi
 
 echo wlan0 > /sys/class/leds/beaglebone\:green\:usr4/device_name
 echo 1 > /sys/class/leds/beaglebone\:green\:usr4/link
 echo 1 > /sys/class/leds/beaglebone\:green\:usr4/rx
 echo 1 > /sys/class/leds/beaglebone\:green\:usr4/tx
 
+if [ -f /etc/systemd/system/multi-user.target.wants/robotcontrol.service ] ; then
+	echo "${log} systemctl: disable robotcontrol.service"
+	systemctl disable robotcontrol.service || true
+	rm -f /etc/modules-load.d/robotcontrol_modules.conf || true
+fi
+if [ -f /etc/systemd/system/multi-user.target.wants/rc_battery_monitor.service ] ; then
+	echo "${log} systemctl: rc_battery_monitor.service"
+	systemctl disable rc_battery_monitor.service || true
+fi
+
+#

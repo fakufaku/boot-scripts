@@ -1,6 +1,6 @@
 #!/bin/sh -e
 #
-# Copyright (c) 2014-2018 Robert Nelson <robertcnelson@gmail.com>
+# Copyright (c) 2014-2021 Robert Nelson <robertcnelson@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,11 @@ if ! id | grep -q root; then
 	exit
 fi
 
+export LANGUAGE=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export DEBIAN_FRONTEND=noninteractive
+
 test_ti_kernel_version () {
 	if [ "x${kernel}" = "x" ] ; then
 		major=$(uname -r | awk '{print $1}' | cut -d. -f1)
@@ -42,6 +47,12 @@ test_ti_kernel_version () {
 			;;
 		x4.19x)
 			kernel="LTS419"
+			;;
+		x5.4x)
+			kernel="LTS54"
+			;;
+		x5.10x)
+			kernel="LTS510"
 			;;
 		esac
 	fi
@@ -94,6 +105,12 @@ test_bone_rt_kernel_version () {
 		x4.19x)
 			kernel="LTS419"
 			;;
+		x5.4x)
+			kernel="LTS54"
+			;;
+		x5.10x)
+			kernel="LTS510"
+			;;
 		esac
 	fi
 }
@@ -118,6 +135,12 @@ test_bone_kernel_version () {
 			;;
 		x4.19x)
 			kernel="LTS419"
+			;;
+		x5.4x)
+			kernel="LTS54"
+			;;
+		x5.10x)
+			kernel="LTS510"
 			;;
 		*)
 			#aka STABLE, as 3.8.13 will always be considered STABLE
@@ -163,6 +186,12 @@ test_armv7_kernel_version () {
 			;;
 		x4.19x)
 			kernel="LTS419"
+			;;
+		x5.4x)
+			kernel="LTS54"
+			;;
+		x5.10x)
+			kernel="LTS510"
 			;;
 		*)
 			kernel="STABLE"
@@ -219,6 +248,12 @@ get_device () {
 			scan_armv7_kernels
 			es8="enabled"
 			;;
+		SeeedStudio_BeagleBone*)
+			scan_ti_kernels
+			scan_bone_kernels
+			scan_armv7_kernels
+			es8="enabled"
+			;;
 		TI_AM335x_P*)
 			scan_ti_kernels
 			scan_bone_kernels
@@ -266,27 +301,38 @@ get_device () {
 	unset tidebugss
 	unset titemperature
 	unset kernel_headers
+	unset seeed_modules
 
 	case "${machine}" in
 	Arrow_BeagleBone_Black_Industrial)
 		libpruio="enabled"
 		es8="enabled"
 		sgxti335x="enabled"
+		seeed_modules="enabled"
 		;;
 	TI_AM335x_BeagleBone*)
 		libpruio="enabled"
 		es8="enabled"
 		sgxti335x="enabled"
+		seeed_modules="enabled"
+		;;
+	SeeedStudio_BeagleBone*)
+		libpruio="enabled"
+		es8="enabled"
+		sgxti335x="enabled"
+		seeed_modules="enabled"
 		;;
 	TI_AM335x_P*)
 		libpruio="enabled"
 		es8="enabled"
 		sgxti335x="enabled"
+		seeed_modules="enabled"
 		;;
 	Octavo_Systems_OSD3358*)
 		libpruio="enabled"
 		es8="enabled"
 		sgxti335x="enabled"
+		seeed_modules="enabled"
 		;;
 	SanCloud_BeagleBone_Enhanced)
 		libpruio="enabled"
@@ -294,6 +340,7 @@ get_device () {
 		sgxti335x="enabled"
 		rtl8723bu="enabled"
 		rtl8821cu="enabled"
+		seeed_modules="enabled"
 		;;
 	TI_AM5728*)
 		sgxjacinto6evm="enabled"
@@ -304,6 +351,7 @@ get_device () {
 	BeagleBoard.org_BeagleBone_AI)
 		sgxjacinto6evm="enabled"
 		ticmem="enabled"
+		seeed_modules="enabled"
 		;;
 	esac
 }
@@ -360,16 +408,18 @@ latest_version_repo () {
 
 			echo "-----------------------------"
 			echo "Kernel Options:"
-			cat /tmp/LATEST-${SOC} | grep -v LTS314
+			if [ "x${show_old}" = "x" ] ; then
+				cat /tmp/LATEST-${SOC} | grep -v LTS314 | grep -v "LTS41 4.1." | grep -v LTS44 | grep -v LTS49
+			else
+				cat /tmp/LATEST-${SOC} | grep -v LTS314 | grep -v "LTS41 4.1."
+			fi
 			echo "-----------------------------"
 			echo "Kernel version options:"
 			echo "-----------------------------"
-			echo "LTS44: --lts-4_4"
-			echo "LTS49: --lts-4_9"
 			echo "LTS414: --lts-4_14"
 			echo "LTS419: --lts-4_19"
-			echo "STABLE: --stable"
-			echo "TESTING: --testing"
+			echo "LTS54: --lts-5_4"
+			echo "LTS510: --lts-5_10"
 			echo "-----------------------------"
 
 			if [ "x${kernel}" = "x" ] ; then
@@ -592,6 +642,16 @@ third_party () {
 				${apt_bin} ${apt_options} rtl8821cu-modules-${latest_kernel} || true
 			fi
 			;;
+		LTS54)
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			;;
+		LTS510)
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			;;
 		esac
 		;;
 	bone-rt)
@@ -621,6 +681,16 @@ third_party () {
 			fi
 			if [ "x${rtl8821cu}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} rtl8821cu-modules-${latest_kernel} || true
+			fi
+			;;
+		LTS54)
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			;;
+		LTS510)
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
 			fi
 			;;
 		esac
@@ -669,7 +739,7 @@ third_party () {
 				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
 			fi
 			if [ "x${ticmem}" = "xenabled" ] ; then
-				${apt_bin} ${apt_options} ti-cmem-modules-${latest_kernel} || true
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
 			fi
 			if [ "x${sgxti335x}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} ti-sgx-ti335x-modules-${latest_kernel} || true
@@ -680,6 +750,46 @@ third_party () {
 			fi
 			if [ "x${sgxjacinto6evm}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} ti-sgx-jacinto6evm-modules-${latest_kernel} || true
+			fi
+			if [ "x${seeed_modules}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} seeed-modules-${latest_kernel} || true
+			fi
+			;;
+		LTS419)
+			cmem_version="4.16.00.00"
+			if [ "x${rtl8723bu}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} rtl8723bu-modules-${latest_kernel} || true
+			fi
+			if [ "x${rtl8821cu}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} rtl8821cu-modules-${latest_kernel} || true
+			fi
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			if [ "x${ticmem}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
+			fi
+			if [ "x${sgxti335x}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-sgx-ti335x-modules-${latest_kernel} || true
+				if [ "x${sgx_blob}" = "xenabled" ] ; then
+					${apt_bin} ${apt_options} ti-sgx-common-ddk-um || true
+					${apt_bin} ${apt_options} ti-sgx-ti33x-ddk-um || true
+				fi
+			fi
+			if [ "x${sgxjacinto6evm}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-sgx-jacinto6evm-modules-${latest_kernel} || true
+			fi
+			if [ "x${seeed_modules}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} seeed-modules-${latest_kernel} || true
+			fi
+			;;
+		LTS54)
+			cmem_version="4.20.00.01"
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			if [ "x${ticmem}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
 			fi
 			;;
 		esac
@@ -728,7 +838,7 @@ third_party () {
 				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
 			fi
 			if [ "x${ticmem}" = "xenabled" ] ; then
-				${apt_bin} ${apt_options} ti-cmem-modules-${latest_kernel} || true
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
 			fi
 			if [ "x${sgxti335x}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} ti-sgx-ti335x-modules-${latest_kernel} || true
@@ -740,8 +850,12 @@ third_party () {
 			if [ "x${sgxjacinto6evm}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} ti-sgx-jacinto6evm-modules-${latest_kernel} || true
 			fi
+			if [ "x${seeed_modules}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} seeed-modules-${latest_kernel} || true
+			fi
 			;;
 		LTS419)
+			cmem_version="4.16.00.00"
 			if [ "x${rtl8723bu}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} rtl8723bu-modules-${latest_kernel} || true
 			fi
@@ -751,9 +865,9 @@ third_party () {
 			if [ "x${libpruio}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
 			fi
-#			if [ "x${ticmem}" = "xenabled" ] ; then
-#				${apt_bin} ${apt_options} ti-cmem-modules-${latest_kernel} || true
-#			fi
+			if [ "x${ticmem}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
+			fi
 			if [ "x${sgxti335x}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} ti-sgx-ti335x-modules-${latest_kernel} || true
 				if [ "x${sgx_blob}" = "xenabled" ] ; then
@@ -764,7 +878,29 @@ third_party () {
 			if [ "x${sgxjacinto6evm}" = "xenabled" ] ; then
 				${apt_bin} ${apt_options} ti-sgx-jacinto6evm-modules-${latest_kernel} || true
 			fi
+			if [ "x${seeed_modules}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} seeed-modules-${latest_kernel} || true
+			fi
 			;;
+		LTS54)
+			cmem_version="4.20.00.01"
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			if [ "x${ticmem}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
+			fi
+			;;
+		LTS510)
+			cmem_version="4.20.00.01"
+			if [ "x${libpruio}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} libpruio-modules-${latest_kernel} || true
+			fi
+			if [ "x${ticmem}" = "xenabled" ] ; then
+				${apt_bin} ${apt_options} ti-cmem-${cmem_version}-modules-${latest_kernel} || true
+			fi
+			;;
+
 		esac
 		;;
 	esac
@@ -785,22 +921,27 @@ case "${get_dist}" in
 wheezy|jessie)
 	dist="${get_dist}"
 	apt_bin="apt-get"
+	cmem_version="4.15.00.02"
 	;;
-stretch|buster|sid)
+stretch|buster|bullseye|sid)
 	dist="${get_dist}"
 	apt_bin="apt"
+	cmem_version="4.16.00.00"
 	;;
-bionic|cosmic|disco)
+bionic|cosmic|disco|focal)
 	dist="${get_dist}"
 	apt_bin="apt"
+	cmem_version="4.16.00.00"
 	;;
 trusty|utopic|vivid|wily|xenial|yakkety|artful)
 	dist="${get_dist}"
 	apt_bin="apt-get"
+	cmem_version="4.15.00.02"
 	;;
 *)
 	dist=""
 	apt_bin="apt-get"
+	cmem_version="4.15.00.02"
 	;;
 esac
 
@@ -836,6 +977,7 @@ unset kernel_version
 unset daily_cron
 unset old_rootfs
 unset sgx_blob
+unset show_old
 # parse commandline options
 while [ ! -z "$1" ] ; do
 	case $1 in
@@ -848,15 +990,19 @@ while [ ! -z "$1" ] ; do
 		;;
 	--lts-3_14-kernel|--lts-3_14)
 		kernel="LTS44"
+		show_old="enable"
 		;;
 	--lts-kernel|--lts-4_1-kernel|--lts-4_1)
 		kernel="LTS44"
+		show_old="enable"
 		;;
 	--lts-4_4-kernel|--lts-4_4|--lts)
 		kernel="LTS44"
+		show_old="enable"
 		;;
 	--lts-4_9-kernel|--lts-4_9)
 		kernel="LTS49"
+		show_old="enable"
 		;;
 	--lts-4_14-kernel|--lts-4_14)
 		kernel="LTS414"
@@ -864,14 +1010,69 @@ while [ ! -z "$1" ] ; do
 	--lts-4_19-kernel|--lts-4_19)
 		kernel="LTS419"
 		;;
+	--v4_20-kernel|--v4_20)
+		kernel="V420X"
+		;;
+	--v5_0-kernel|--v5_0)
+		kernel="V50X"
+		;;
+	--v5_1-kernel|--v5_1)
+		kernel="V51X"
+		;;
+	--v5_2-kernel|--v5_2)
+		kernel="V52X"
+		;;
+	--v5_3-kernel|--v5_3)
+		kernel="V53X"
+		;;
+	--lts-5_4-kernel|--lts-5_4)
+		kernel="LTS54"
+		;;
+	--v5_5-kernel|--v5_5)
+		kernel="V55X"
+		;;
+	--v5_6-kernel|--v5_6)
+		kernel="V56X"
+		;;
+	--v5_7-kernel|--v5_7)
+		kernel="V57X"
+		;;
+	--v5_8-kernel|--v5_8)
+		kernel="V58X"
+		;;
+	--v5_9-kernel|--v5_9)
+		kernel="V59X"
+		;;
+	--lts-5_10-kernel|--lts-5_10)
+		kernel="LTS510"
+		;;
+	--v5_11-kernel|--v5_11)
+		kernel="V511X"
+		;;
+	--v5_12-kernel|--v5_12)
+		kernel="V512X"
+		;;
+	--v5_13-kernel|--v5_13)
+		kernel="V513X"
+		;;
+	--v5_14-kernel|--v5_14)
+		kernel="V514X"
+		;;
+	--v5_15-kernel|--v5_15)
+		kernel="V515X"
+		;;
 	--stable-kernel|--stable)
 		kernel="STABLE"
 		;;
 	--beta-kernel|--beta|--testing-kernel|--testing)
-		kernel="TESTING"
+		echo "option: [--beta-kernel|--beta|--testing-kernel|--testing] is no longer supported"
+		exit 2
+		kernel="STABLE"
 		;;
 	--exp-kernel|--exp)
-		kernel="EXPERIMENTAL"
+		echo "option: [--exp-kernel|--exp] is no longer supported"
+		exit 2
+		kernel="STABLE"
 		;;
 	--armv7-channel)
 		SOC="armv7"

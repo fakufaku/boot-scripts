@@ -1,6 +1,6 @@
 #!/bin/sh -e
 #
-# Copyright (c) 2013-2017 Robert Nelson <robertcnelson@gmail.com>
+# Copyright (c) 2013-2020 Robert Nelson <robertcnelson@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -37,16 +37,30 @@ disable_connman_dnsproxy () {
 	fi
 }
 
+log="am335x_evm:"
+
 if [ -f /etc/rcn-ee.conf ] ; then
 	. /etc/rcn-ee.conf
 fi
 
 if [ -f /etc/default/bb-boot ] ; then
 	unset USB_NETWORK_DISABLED
-	. /etc/default/bb-boot
-fi
+	unset USB_NETWORK_RNDIS_DISABLED
+	unset USB_NETWORK_CDC_DISABLED
 
-log="am335x_evm:"
+	. /etc/default/bb-boot
+
+	if [ "x${USB_CONFIGURATION}" = "x" ] ; then
+		echo "${log} Updating /etc/default/bb-boot"
+		cp -v /opt/scripts/boot/default/bb-boot /etc/default/bb-boot || true
+		. /etc/default/bb-boot
+	fi
+
+	if [ "x${USB_NETWORK_DISABLED}" = "xyes" ] ; then
+		USB_NETWORK_RNDIS_DISABLED="yes"
+		USB_NETWORK_CDC_DISABLED="yes"
+	fi
+fi
 
 unset detected_capes
 detected_capes=$(cat /proc/cmdline | sed 's/ /\n/g' | grep uboot_detected_capes= || true)
@@ -110,71 +124,110 @@ fi
 unset dnsmasq_usb0_usb1
 unset blue_fix_uarts
 
+wifi_prefix="BeagleBone"
+
+usb_iserialnumber="1234BBBK5678"
+usb_imanufacturer="BeagleBoard.org"
+usb_iproduct="BeagleBoneBlack"
+
+board_has_roboticscape="disable"
+board_has_wl18xx="disable"
+
 board=$(cat /proc/device-tree/model | sed "s/ /_/g" | tr -d '\000')
 case "${board}" in
+Octavo_Systems_OSD3358*)
+	has_wifi="disable"
+	cleanup_extra_docs
+	dnsmasq_usb0_usb1="enable"
+	;;
+SanCloud_BeagleBone_Enhanced)
+	has_wifi="enable"
+	cleanup_extra_docs
+	usb_imanufacturer="SanCloud"
+	usb_iproduct="BeagleBoneEnhanced"
+	;;
+SeeedStudio_BeagleBone_Green_Gateway)
+	has_wifi="enable"
+	board_bbgg="enable"
+	cleanup_extra_docs
+	dnsmasq_usb0_usb1="enable"
+	board_has_wl18xx="enable"
+	;;
 TI_AM335x_BeagleBone)
 	has_wifi="disable"
 	cleanup_extra_docs
 	dnsmasq_usb0_usb1="enable"
+	usb_iproduct="BeagleBone"
 	;;
 TI_AM335x_BeagleBone_Black)
 	has_wifi="disable"
 	cleanup_extra_docs
 	dnsmasq_usb0_usb1="enable"
 	;;
-TI_AM335x_BeagleBone_Black_Wireless)
-	has_wifi="enable"
-	#recovers 82MB of space
-	cleanup_extra_docs
-	;;
-TI_AM335x_BeagleBone_Blue)
+TI_AM335x_BeagleBone_Black_Gateway_Cape)
 	has_wifi="enable"
 	cleanup_extra_docs
-#	blue_fix_uarts="enable"
-	;;
-TI_AM335x_BeagleBone_Green)
-	has_wifi="disable"
-	unset board_bbgw
-	unset board_sbbe
-	dnsmasq_usb0_usb1="enable"
-	;;
-TI_AM335x_BeagleBone_Green_Wireless)
-	board_bbgw="enable"
-	has_wifi="enable"
-	;;
-TI_AM335x_BeagleLogic_Standalone)
-	has_wifi="disable"
-	dnsmasq_usb0_usb1="enable"
-	;;
-TI_AM335x_P*)
-	has_wifi="disable"
-	cleanup_extra_docs
-	dnsmasq_usb0_usb1="enable"
-	;;
-SanCloud_BeagleBone_Enhanced)
-	board_sbbe="enable"
-	has_wifi="enable"
-	cleanup_extra_docs
-	;;
-Octavo_Systems_OSD3358*)
-	has_wifi="disable"
-	cleanup_extra_docs
-	dnsmasq_usb0_usb1="enable"
+	board_has_wl18xx="enable"
 	;;
 TI_AM335x_BeagleBone_Black_RoboticsCape)
 	has_wifi="disable"
 	cleanup_extra_docs
 	dnsmasq_usb0_usb1="enable"
+	board_has_roboticscape="enable"
+	;;
+TI_AM335x_BeagleBone_Black_Wireless)
+	has_wifi="enable"
+	#recovers 82MB of space
+	cleanup_extra_docs
+	board_has_wl18xx="enable"
 	;;
 TI_AM335x_BeagleBone_Black_Wireless_RoboticsCape)
 	has_wifi="enable"
 	#recovers 82MB of space
 	cleanup_extra_docs
+	board_has_roboticscape="enable"
+	board_has_wl18xx="enable"
+	;;
+TI_AM335x_BeagleBone_Blue)
+	has_wifi="enable"
+	cleanup_extra_docs
+#	blue_fix_uarts="enable"
+	board_has_roboticscape="enable"
+	board_has_wl18xx="enable"
+	;;
+TI_AM335x_BeagleBone_Green)
+	has_wifi="disable"
+	unset board_bbgw
+	dnsmasq_usb0_usb1="enable"
+	usb_imanufacturer="Seeed"
+	usb_iproduct="BeagleBoneGreen"
+	;;
+TI_AM335x_BeagleBone_Green_Wireless)
+	board_bbgw="enable"
+	has_wifi="enable"
+	usb_imanufacturer="Seeed"
+	usb_iproduct="BeagleBoneGreenWireless"
+	board_has_wl18xx="enable"
+	;;
+TI_AM335x_BeagleLogic_Standalone)
+	has_wifi="disable"
+	dnsmasq_usb0_usb1="enable"
+	usb_imanufacturer="BeagleLogic"
+	usb_iproduct="BeagleLogicStandalone"
+	;;
+TI_AM335x_PocketBeagle)
+	has_wifi="disable"
+	cleanup_extra_docs
+	dnsmasq_usb0_usb1="enable"
+	;;
+TI_AM335x_PocketBone)
+	has_wifi="disable"
+	cleanup_extra_docs
+	dnsmasq_usb0_usb1="enable"
 	;;
 *)
 	has_wifi="disable"
 	unset board_bbgw
-	unset board_sbbe
 	;;
 esac
 
@@ -182,64 +235,22 @@ if [ ! "x${usb_image_file}" = "x" ] ; then
 	echo "${log} usb_image_file=[`readlink -f ${usb_image_file}`]"
 fi
 
-usb_iserialnumber="1234BBBK5678"
-ISBLACK=""
-ISGREEN=""
-usb_iproduct="am335x_evm"
-usb_imanufacturer="BeagleBoard.org"
-wifi_prefix="BeagleBone"
-
 #pre nvmem...
 eeprom="/sys/bus/i2c/devices/0-0050/eeprom"
 if [ -f ${eeprom} ] && [ -f /usr/bin/hexdump ] ; then
 	usb_iserialnumber=$(hexdump -e '8/1 "%c"' ${eeprom} -n 28 | cut -b 17-28)
-	ISBLACK=$(hexdump -e '8/1 "%c"' ${eeprom} -n 12 | cut -b 9-12)
-	ISGREEN=$(hexdump -e '8/1 "%c"' ${eeprom} -n 19 | cut -b 17-19)
-	ISBLACKVARIENT=$(hexdump -e '8/1 "%c"' ${eeprom} -n 16 | cut -b 13-16)
 fi
 
 #[PATCH (pre v8) 0/9] Add simple NVMEM Framework via regmap.
 eeprom="/sys/class/nvmem/at24-0/nvmem"
 if [ -f ${eeprom} ] && [ -f /usr/bin/hexdump ] ; then
 	usb_iserialnumber=$(hexdump -e '8/1 "%c"' ${eeprom} -n 28 | cut -b 17-28)
-	ISBLACK=$(hexdump -e '8/1 "%c"' ${eeprom} -n 12 | cut -b 9-12)
-	ISGREEN=$(hexdump -e '8/1 "%c"' ${eeprom} -n 19 | cut -b 17-19)
-	ISBLACKVARIENT=$(hexdump -e '8/1 "%c"' ${eeprom} -n 16 | cut -b 13-16)
 fi
 
 #[PATCH v8 0/9] Add simple NVMEM Framework via regmap.
 eeprom="/sys/bus/nvmem/devices/at24-0/nvmem"
 if [ -f ${eeprom} ] && [ -f /usr/bin/hexdump ] ; then
 	usb_iserialnumber=$(hexdump -e '8/1 "%c"' ${eeprom} -n 28 | cut -b 17-28)
-	ISBLACK=$(hexdump -e '8/1 "%c"' ${eeprom} -n 12 | cut -b 9-12)
-	ISGREEN=$(hexdump -e '8/1 "%c"' ${eeprom} -n 19 | cut -b 17-19)
-	ISBLACKVARIENT=$(hexdump -e '8/1 "%c"' ${eeprom} -n 16 | cut -b 13-16)
-fi
-
-usb_iproduct="BeagleBone"
-if [ "x${ISBLACK}" = "xBBBK" ] || [ "x${ISBLACK}" = "xBNLT" ] ; then
-	if [ "x${ISGREEN}" = "xBBG" ] ; then
-		usb_imanufacturer="Seeed"
-		usb_iproduct="BeagleBoneGreen"
-	else
-		#FIXME: should be a case statement, on the next varient..
-		if [ "x${ISBLACKVARIENT}" = "xGW1A" ] ; then
-			usb_imanufacturer="Seeed"
-			usb_iproduct="BeagleBoneGreenWireless"
-		else
-			if [ "x$board_sbbe" = "xenable" ] ; then
-				usb_imanufacturer="SanCloud"
-				usb_iproduct="BeagleBoneEnhanced"
-			else
-				usb_iproduct="BeagleBoneBlack"
-			fi
-		fi
-	fi
-fi
-
-if [ "x${ISBLACK}" = "xBLGC" ] ; then
-	usb_imanufacturer="BeagleLogic"
-	usb_iproduct="BeagleLogicStandalone"
 fi
 
 #mac address:
@@ -250,203 +261,133 @@ fi
 #cpsw_4_mac = usb1 (BeagleBone Side)
 #cpsw_5_mac = usb1 (USB host, pc side)
 
+unset mac_addr0
 mac_address="/proc/device-tree/ocp/ethernet@4a100000/slave@4a100200/mac-address"
+mac_address_v54="/proc/device-tree/ocp/interconnect@4a000000/segment@0/target-module@100000/ethernet@0/slave@200/mac-address"
 if [ -f ${mac_address} ] && [ -f /usr/bin/hexdump ] ; then
-	cpsw_0_mac=$(hexdump -v -e '1/1 "%02X" ":"' ${mac_address} | sed 's/.$//')
-
-	#Some devices are showing a blank cpsw_0_mac [00:00:00:00:00:00], let's fix that up...
-	if [ "x${cpsw_0_mac}" = "x00:00:00:00:00:00" ] ; then
-		cpsw_0_mac="1C:BA:8C:A2:ED:68"
-	fi
+	echo "${log} cpsw: ethernet@4a100000/slave@4a100200/mac-address"
+	mac_addr0=$(hexdump -v -e '1/1 "%02X" ":"' ${mac_address} | sed 's/.$//')
+	echo "${log} cpsw: ${mac_addr0}"
+elif [ -f ${mac_address_v54} ] && [ -f /usr/bin/hexdump ] ; then
+	echo "${log} cpsw: ethernet@0/slave@200/mac-address"
+	mac_addr0=$(hexdump -v -e '1/1 "%02X" ":"' ${mac_address_v54} | sed 's/.$//')
+	echo "${log} cpsw: ${mac_addr0}"
 else
-	#todo: generate random mac... (this is a development tre board in the lab...)
-	cpsw_0_mac="1C:BA:8C:A2:ED:68"
+	echo "${log} cpsw: mac-address location changed again..."
+	mac_addr0="1C:BA:8C:A2:ED:68"
+	echo "${log} cpsw: ${mac_addr0}"
 fi
 
-unset use_cached_cpsw_mac
-if [ -f /etc/cpsw_0_mac ] ; then
-	unset test_cpsw_0_mac
-	test_cpsw_0_mac=$(cat /etc/cpsw_0_mac)
-	if [ "x${cpsw_0_mac}" = "x${test_cpsw_0_mac}" ] ; then
-		use_cached_cpsw_mac="true"
-	else
-		echo "${cpsw_0_mac}" > /etc/cpsw_0_mac || true
-	fi
-else
-	echo "${cpsw_0_mac}" > /etc/cpsw_0_mac || true
+#Some devices are showing a blank mac_addr0 [00:00:00:00:00:00], let's fix that up...
+if [ "x${mac_addr0}" = "x00:00:00:00:00:00" ] ; then
+	echo "${log} cpsw: mac came up 00:00:00:00:00:00 fixing..."
+	mac_addr0="1C:BA:8C:A2:ED:68"
+	echo "${log} cpsw: ${mac_addr0}"
 fi
 
-if [ "x${use_cached_cpsw_mac}" = "xtrue" ] && [ -f /etc/cpsw_1_mac ] ; then
+
+mac_addr0_octet_1_5=$(echo ${mac_addr0} | cut -c 1-14)
+mac_addr0_octet_6=$(echo ${mac_addr0} | awk -F ':' '{print $6}')
+echo "${log} cpsw: [${mac_addr0}] [${mac_addr0_octet_1_5}] [${mac_addr0_octet_6}]"
+
+if [ -f /usr/bin/bb_generate_mac.sh ] ; then
+	/usr/bin/bb_generate_mac.sh --mac ${mac_addr0}
 	cpsw_1_mac=$(cat /etc/cpsw_1_mac)
-else
-	mac_address="/proc/device-tree/ocp/ethernet@4a100000/slave@4a100300/mac-address"
-	if [ -f ${mac_address} ] && [ -f /usr/bin/hexdump ] ; then
-		cpsw_1_mac=$(hexdump -v -e '1/1 "%02X" ":"' ${mac_address} | sed 's/.$//')
-
-		#Some devices are showing a blank cpsw_1_mac [00:00:00:00:00:00], let's fix that up...
-		if [ "x${cpsw_1_mac}" = "x00:00:00:00:00:00" ] ; then
-			if [ -f /usr/bin/bc ] ; then
-				mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-				cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-				#bc cuts off leading zero's, we need ten/ones value
-				cpsw_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 102" | bc)
-
-				cpsw_1_mac=${mac_0_prefix}:$(echo ${cpsw_res} | cut -c 2-3)
-			else
-				cpsw_1_mac="1C:BA:8C:A2:ED:70"
-			fi
-		fi
-		echo "${cpsw_1_mac}" > /etc/cpsw_1_mac || true
-	else
-		#todo: generate random mac...
-		cpsw_1_mac="1C:BA:8C:A2:ED:70"
-		echo "${cpsw_1_mac}" > /etc/cpsw_1_mac || true
-	fi
-fi
-
-if [ "x${use_cached_cpsw_mac}" = "xtrue" ] && [ -f /etc/cpsw_2_mac ] ; then
 	cpsw_2_mac=$(cat /etc/cpsw_2_mac)
-else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		cpsw_1_6=$(echo ${cpsw_1_mac} | awk -F ':' '{print $6}')
-
-		cpsw_add=$(echo "obase=16;ibase=16;$cpsw_0_6 + $cpsw_1_6" | bc)
-		cpsw_div=$(echo "obase=16;ibase=16;$cpsw_add / 2" | bc)
-		#bc cuts off leading zero's, we need ten/ones value
-		cpsw_res=$(echo "obase=16;ibase=16;$cpsw_div + 100" | bc)
-
-		cpsw_2_mac=${mac_0_prefix}:$(echo ${cpsw_res} | cut -c 2-3)
-		echo "${log} uncached cpsw_2_mac: [${cpsw_2_mac}]"
-	else
-		cpsw_0_last=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}' | cut -c 2)
-		cpsw_1_last=$(echo ${cpsw_1_mac} | awk -F ':' '{print $6}' | cut -c 2)
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-16)
-		mac_1_prefix=$(echo ${cpsw_1_mac} | cut -c 1-16)
-		#if cpsw_0_mac is even, add 1
-		case "x${cpsw_0_last}" in
-		x0)
-			cpsw_2_mac="${mac_0_prefix}1"
-			;;
-		x2)
-			cpsw_2_mac="${mac_0_prefix}3"
-			;;
-		x4)
-			cpsw_2_mac="${mac_0_prefix}5"
-			;;
-		x6)
-			cpsw_2_mac="${mac_0_prefix}7"
-			;;
-		x8)
-			cpsw_2_mac="${mac_0_prefix}9"
-			;;
-		xA)
-			cpsw_2_mac="${mac_0_prefix}B"
-			;;
-		xC)
-			cpsw_2_mac="${mac_0_prefix}D"
-			;;
-		xE)
-			cpsw_2_mac="${mac_0_prefix}F"
-			;;
-		*)
-			#else, subtract 1 from cpsw_1_mac
-			case "x${cpsw_1_last}" in
-			xF)
-				cpsw_2_mac="${mac_1_prefix}E"
-				;;
-			xD)
-				cpsw_2_mac="${mac_1_prefix}C"
-				;;
-			xB)
-				cpsw_2_mac="${mac_1_prefix}A"
-				;;
-			x9)
-				cpsw_2_mac="${mac_1_prefix}8"
-				;;
-			x7)
-				cpsw_2_mac="${mac_1_prefix}6"
-				;;
-			x5)
-				cpsw_2_mac="${mac_1_prefix}4"
-				;;
-			x3)
-				cpsw_2_mac="${mac_1_prefix}2"
-				;;
-			x1)
-				cpsw_2_mac="${mac_1_prefix}0"
-				;;
-			*)
-				#todo: generate random mac...
-				cpsw_2_mac="1C:BA:8C:A2:ED:6A"
-				;;
-			esac
-			;;
-		esac
-	fi
-	echo "${cpsw_2_mac}" > /etc/cpsw_2_mac || true
-fi
-
-if [ "x${use_cached_cpsw_mac}" = "xtrue" ] && [ -f /etc/cpsw_3_mac ] ; then
 	cpsw_3_mac=$(cat /etc/cpsw_3_mac)
-else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		cpsw_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 103" | bc)
-
-		cpsw_3_mac=${mac_0_prefix}:$(echo ${cpsw_res} | cut -c 2-3)
-	else
-		cpsw_3_mac="1C:BA:8C:A2:ED:71"
-	fi
-	echo "${cpsw_3_mac}" > /etc/cpsw_3_mac || true
-fi
-
-if [ "x${use_cached_cpsw_mac}" = "xtrue" ] && [ -f /etc/cpsw_4_mac ] ; then
 	cpsw_4_mac=$(cat /etc/cpsw_4_mac)
-else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		cpsw_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 104" | bc)
-
-		cpsw_4_mac=${mac_0_prefix}:$(echo ${cpsw_res} | cut -c 2-3)
-	else
-		cpsw_4_mac="1C:BA:8C:A2:ED:72"
-	fi
-	echo "${cpsw_4_mac}" > /etc/cpsw_4_mac || true
-fi
-
-if [ "x${use_cached_cpsw_mac}" = "xtrue" ] && [ -f /etc/cpsw_5_mac ] ; then
 	cpsw_5_mac=$(cat /etc/cpsw_5_mac)
 else
-	if [ -f /usr/bin/bc ] ; then
-		mac_0_prefix=$(echo ${cpsw_0_mac} | cut -c 1-14)
-
-		cpsw_0_6=$(echo ${cpsw_0_mac} | awk -F ':' '{print $6}')
-		#bc cuts off leading zero's, we need ten/ones value
-		cpsw_res=$(echo "obase=16;ibase=16;$cpsw_0_6 + 105" | bc)
-
-		cpsw_5_mac=${mac_0_prefix}:$(echo ${cpsw_res} | cut -c 2-3)
+	unset use_cached_mac_addr
+	if [ -f /etc/cpsw_0_mac ] ; then
+		unset test_cpsw_0_mac
+		test_cpsw_0_mac=$(cat /etc/cpsw_0_mac)
+		if [ "x${mac_addr0}" = "x${test_cpsw_0_mac}" ] ; then
+			use_cached_mac_addr="true"
+		else
+			echo "${mac_addr0}" > /etc/cpsw_0_mac || true
+		fi
 	else
-		cpsw_5_mac="1C:BA:8C:A2:ED:73"
+		echo "${mac_addr0}" > /etc/cpsw_0_mac || true
 	fi
-	echo "${cpsw_5_mac}" > /etc/cpsw_5_mac || true
-fi
 
-echo "${log} cpsw_0_mac: [${cpsw_0_mac}]"
-echo "${log} cpsw_1_mac: [${cpsw_1_mac}]"
-echo "${log} cpsw_2_mac: [${cpsw_2_mac}]"
-echo "${log} cpsw_3_mac: [${cpsw_3_mac}]"
-echo "${log} cpsw_4_mac: [${cpsw_4_mac}]"
-echo "${log} cpsw_5_mac: [${cpsw_5_mac}]"
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_1_mac ] ; then
+		mac_addr1=$(cat /etc/cpsw_1_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$mac_addr0_octet_6 + 102" | bc)
+
+			mac_addr1=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr1="1C:BA:8C:A2:ED:69"
+		fi
+		echo "${mac_addr1}" > /etc/cpsw_1_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_2_mac ] ; then
+		mac_addr2=$(cat /etc/cpsw_2_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 103" | bc)
+
+			mac_addr2=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr2="1C:BA:8C:A2:ED:70"
+		fi
+		echo "${mac_addr2}" > /etc/cpsw_2_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_3_mac ] ; then
+		mac_addr3=$(cat /etc/cpsw_3_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 104" | bc)
+
+			mac_addr3=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr3="1C:BA:8C:A2:ED:71"
+		fi
+		echo "${mac_addr3}" > /etc/cpsw_3_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_4_mac ] ; then
+		mac_addr4=$(cat /etc/cpsw_4_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 105" | bc)
+
+			mac_addr4=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr4="1C:BA:8C:A2:ED:72"
+		fi
+		echo "${mac_addr4}" > /etc/cpsw_4_mac || true
+	fi
+
+	if [ "x${use_cached_mac_addr}" = "xtrue" ] && [ -f /etc/cpsw_5_mac ] ; then
+		mac_addr5=$(cat /etc/cpsw_5_mac)
+	else
+		if [ -f /usr/bin/bc ] ; then
+			#bc cuts off leading zero's, we need ten/ones value
+			new_octet_6=$(echo "obase=16;ibase=16;$cpsw_0_6 + 106" | bc)
+
+			mac_addr5=${mac_addr0_octet_1_5}:$(echo ${new_octet_6} | cut -c 2-3)
+		else
+			mac_addr5="1C:BA:8C:A2:ED:73"
+		fi
+		echo "${mac_addr5}" > /etc/cpsw_5_mac || true
+	fi
+
+	echo "${log} cpsw_0_mac: [${mac_addr0}]"
+	echo "${log} cpsw_1_mac: [${mac_addr1}]"
+	echo "${log} cpsw_2_mac: [${mac_addr2}]"
+	echo "${log} cpsw_3_mac: [${mac_addr3}]"
+	echo "${log} cpsw_4_mac: [${mac_addr4}]"
+	echo "${log} cpsw_5_mac: [${mac_addr5}]"
+fi
 
 if [ -f /var/lib/connman/settings ] ; then
 	wifi_name=$(grep Tethering.Identifier= /var/lib/connman/settings | awk -F '=' '{print $2}' || true)
@@ -481,84 +422,103 @@ fi
 
 run_libcomposite () {
 	if [ ! -d /sys/kernel/config/usb_gadget/g_multi/ ] ; then
-		echo "${log} Creating g_multi"
-		mkdir -p /sys/kernel/config/usb_gadget/g_multi || true
-		cd /sys/kernel/config/usb_gadget/g_multi
+		if [ -f /usr/bin/bb_usb_gadget.sh ] ; then
+			/usr/bin/bb_usb_gadget.sh || true
+		else
+			echo "${log} Creating g_multi"
+			mkdir -p /sys/kernel/config/usb_gadget/g_multi || true
+			cd /sys/kernel/config/usb_gadget/g_multi
 
-		echo ${usb_bcdUSB} > bcdUSB
-		echo ${usb_idVendor} > idVendor # Linux Foundation
-		echo ${usb_idProduct} > idProduct # Multifunction Composite Gadget
-		echo ${usb_bcdDevice} > bcdDevice
+			echo ${usb_bcdUSB} > bcdUSB
+			echo ${usb_idVendor} > idVendor # Linux Foundation
+			echo ${usb_idProduct} > idProduct # Multifunction Composite Gadget
+			echo ${usb_bcdDevice} > bcdDevice
 
-		#0x409 = english strings...
-		mkdir -p strings/0x409
+			#0x409 = english strings...
+			mkdir -p strings/0x409
 
-		echo ${usb_iserialnumber} > strings/0x409/serialnumber
-		echo ${usb_imanufacturer} > strings/0x409/manufacturer
-		echo ${usb_iproduct} > strings/0x409/product
+			echo ${usb_iserialnumber} > strings/0x409/serialnumber
+			echo ${usb_imanufacturer} > strings/0x409/manufacturer
+			echo ${usb_iproduct} > strings/0x409/product
 
-		if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
-			mkdir -p functions/rndis.usb0
-			# first byte of address must be even
-			echo ${cpsw_2_mac} > functions/rndis.usb0/host_addr
-			echo ${cpsw_1_mac} > functions/rndis.usb0/dev_addr
+			mkdir -p configs/c.1/strings/0x409
+			echo "BeagleBone Composite" > configs/c.1/strings/0x409/configuration
 
-			# Starting with kernel 4.14, we can do this to match Microsoft's built-in RNDIS driver.
-			# Earlier kernels require the patch below as a work-around instead:
-			# https://github.com/beagleboard/linux/commit/e94487c59cec8ba32dc1eb83900297858fdc590b
-			if [ -f functions/rndis.usb0/class ]; then
-				echo EF > functions/rndis.usb0/class
-				echo 04 > functions/rndis.usb0/subclass
-				echo 01 > functions/rndis.usb0/protocol
+			echo 500 > configs/c.1/MaxPower
+
+			if [ ! "x${USB_NETWORK_RNDIS_DISABLED}" = "xyes" ]; then
+				mkdir -p functions/rndis.usb0
+				# first byte of address must be even
+				echo ${cpsw_2_mac} > functions/rndis.usb0/host_addr
+				echo ${cpsw_1_mac} > functions/rndis.usb0/dev_addr
+
+				# Starting with kernel 4.14, we can do this to match Microsoft's built-in RNDIS driver.
+				# Earlier kernels require the patch below as a work-around instead:
+				# https://github.com/beagleboard/linux/commit/e94487c59cec8ba32dc1eb83900297858fdc590b
+				if [ -f functions/rndis.usb0/class ]; then
+					echo EF > functions/rndis.usb0/class
+					echo 04 > functions/rndis.usb0/subclass
+					echo 01 > functions/rndis.usb0/protocol
+				fi
+
+				# Add OS Descriptors for the latest Windows 10 rndiscmp.inf
+				# https://answers.microsoft.com/en-us/windows/forum/windows_10-networking-winpc/windows-10-vs-remote-ndis-ethernet-usbgadget-not/cb30520a-753c-4219-b908-ad3d45590447
+				# https://www.spinics.net/lists/linux-usb/msg107185.html
+				echo 1 > os_desc/use
+				echo CD > os_desc/b_vendor_code || true
+				echo MSFT100 > os_desc/qw_sign
+				echo "RNDIS" > functions/rndis.usb0/os_desc/interface.rndis/compatible_id
+				echo "5162001" > functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id
+
+				mkdir -p configs/c.1
+				ln -s configs/c.1 os_desc
+				mkdir -p functions/rndis.usb0/os_desc/interface.rndis/Icons
+				echo 2 > functions/rndis.usb0/os_desc/interface.rndis/Icons/type
+				echo "%SystemRoot%\\system32\\shell32.dll,-233" > functions/rndis.usb0/os_desc/interface.rndis/Icons/data
+				mkdir -p functions/rndis.usb0/os_desc/interface.rndis/Label
+				echo 1 > functions/rndis.usb0/os_desc/interface.rndis/Label/type
+				echo "BeagleBone USB Ethernet" > functions/rndis.usb0/os_desc/interface.rndis/Label/data
+
+				ln -s functions/rndis.usb0 configs/c.1/
 			fi
 
-			# Add OS Descriptors for the latest Windows 10 rndiscmp.inf
-			# https://answers.microsoft.com/en-us/windows/forum/windows_10-networking-winpc/windows-10-vs-remote-ndis-ethernet-usbgadget-not/cb30520a-753c-4219-b908-ad3d45590447
-			# https://www.spinics.net/lists/linux-usb/msg107185.html
-			echo 1 > os_desc/use
-			echo CD > os_desc/b_vendor_code
-			echo MSFT100 > os_desc/qw_sign
-			echo "RNDIS" > functions/rndis.usb0/os_desc/interface.rndis/compatible_id
-			echo "5162001" > functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id
+			if [ "x${has_img_file}" = "xtrue" ] ; then
+				echo "${log} enable USB mass_storage ${usb_image_file}"
+				mkdir -p functions/mass_storage.usb0
+				echo ${usb_ms_stall} > functions/mass_storage.usb0/stall
+				echo ${usb_ms_cdrom} > functions/mass_storage.usb0/lun.0/cdrom
+				echo ${usb_ms_nofua} > functions/mass_storage.usb0/lun.0/nofua
+				echo ${usb_ms_removable} > functions/mass_storage.usb0/lun.0/removable
+				echo ${usb_ms_ro} > functions/mass_storage.usb0/lun.0/ro
+				echo ${actual_image_file} > functions/mass_storage.usb0/lun.0/file
 
-			mkdir -p functions/ecm.usb0
-			echo ${cpsw_4_mac} > functions/ecm.usb0/host_addr
-			echo ${cpsw_5_mac} > functions/ecm.usb0/dev_addr
-		fi
+				ln -s functions/mass_storage.usb0 configs/c.1/
+			fi
 
-		mkdir -p functions/acm.usb0
+			if [ ! "x${USB_NETWORK_RNDIS_DISABLED}" = "xyes" ]; then
+				ln -s configs/c.1 os_desc
+				mkdir functions/rndis.usb0/os_desc/interface.rndis/Icons
+				echo 2 > functions/rndis.usb0/os_desc/interface.rndis/Icons/type
+				echo "%SystemRoot%\\system32\\shell32.dll,-233" > functions/rndis.usb0/os_desc/interface.rndis/Icons/data
+				mkdir functions/rndis.usb0/os_desc/interface.rndis/Label
+				echo 1 > functions/rndis.usb0/os_desc/interface.rndis/Label/type
+				echo "BeagleBone USB Ethernet" > functions/rndis.usb0/os_desc/interface.rndis/Label/data
 
-		if [ "x${has_img_file}" = "xtrue" ] ; then
-			echo "${log} enable USB mass_storage ${usb_image_file}"
-			mkdir -p functions/mass_storage.usb0
-			echo ${usb_ms_stall} > functions/mass_storage.usb0/stall
-			echo ${usb_ms_cdrom} > functions/mass_storage.usb0/lun.0/cdrom
-			echo ${usb_ms_nofua} > functions/mass_storage.usb0/lun.0/nofua
-			echo ${usb_ms_removable} > functions/mass_storage.usb0/lun.0/removable
-			echo ${usb_ms_ro} > functions/mass_storage.usb0/lun.0/ro
-			echo ${actual_image_file} > functions/mass_storage.usb0/lun.0/file
-		fi
+				ln -s functions/rndis.usb0 configs/c.1/
+				usb0="enable"
+			fi
 
-		mkdir -p configs/c.1/strings/0x409
-		echo "Multifunction with RNDIS" > configs/c.1/strings/0x409/configuration
+			if [ ! "x${USB_NETWORK_CDC_DISABLED}" = "xyes" ]; then
+				mkdir -p functions/ncm.usb0
+				echo ${cpsw_4_mac} > functions/ncm.usb0/host_addr
+				echo ${cpsw_5_mac} > functions/ncm.usb0/dev_addr
 
-		echo 500 > configs/c.1/MaxPower
+				ln -s functions/ncm.usb0 configs/c.1/
+				usb1="enable"
+			fi
 
-		if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
-			ln -s configs/c.1 os_desc
-			mkdir functions/rndis.usb0/os_desc/interface.rndis/Icons
-			echo 2 > functions/rndis.usb0/os_desc/interface.rndis/Icons/type
-			echo "%SystemRoot%\\system32\\shell32.dll,-233" > functions/rndis.usb0/os_desc/interface.rndis/Icons/data
-			mkdir functions/rndis.usb0/os_desc/interface.rndis/Label
-			echo 1 > functions/rndis.usb0/os_desc/interface.rndis/Label/type
-			echo "BeagleBone USB Ethernet" > functions/rndis.usb0/os_desc/interface.rndis/Label/data
-
-			ln -s functions/rndis.usb0 configs/c.1/
-			ln -s functions/ecm.usb0 configs/c.1/
-		fi
-		ln -s functions/acm.usb0 configs/c.1/
-		if [ "x${has_img_file}" = "xtrue" ] ; then
-			ln -s functions/mass_storage.usb0 configs/c.1/
+			mkdir -p functions/acm.usb0
+			ln -s functions/acm.usb0 configs/c.1/
 		fi
 
 		# now create audio device
@@ -576,8 +536,6 @@ run_libcomposite () {
 			fi
 		fi
 
-		usb0="enable"
-		usb1="enable"
 		echo "${log} g_multi Created"
 	else
 		echo "${log} FIXME: need to bring down g_multi first, before running a second time."
@@ -607,11 +565,11 @@ use_libcomposite () {
 	else
 		#We don't use a physical partition anymore...
 		unset root_drive
-		root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep root=UUID= | awk -F 'root=' '{print $2}' || true)"
+		root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root=UUID= | awk -F 'root=' '{print $2}' || true)"
 		if [ ! "x${root_drive}" = "x" ] ; then
 			root_drive="$(/sbin/findfs ${root_drive} || true)"
 		else
-			root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep root= | awk -F 'root=' '{print $2}' || true)"
+			root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root= | awk -F 'root=' '{print $2}' || true)"
 		fi
 
 		if [ "x${root_drive}" = "x/dev/mmcblk0p1" ] || [ "x${root_drive}" = "x/dev/mmcblk1p1" ] ; then
@@ -621,25 +579,21 @@ use_libcomposite () {
 		fi
 	fi
 
-	#ls -lha /sys/kernel/*
-	#ls -lha /sys/kernel/config/*
-#	if [ ! -d /sys/kernel/config/usb_gadget/ ] ; then
-
-	echo "${log} modprobe libcomposite"
-	modprobe libcomposite || true
-	if [ -d /sys/module/libcomposite ] ; then
+	echo "${log} Looking for libcomposite"
+	if [ -d /sys/kernel/config/usb_gadget/ ] ; then
 		run_libcomposite
 	else
-		if [ -f /sbin/depmod ] ; then
-			/sbin/depmod -a
+		echo "${log} modprobe libcomposite"
+		modprobe libcomposite || true
+		if [ -d /sys/module/libcomposite ] ; then
+			run_libcomposite
+		else
+			if [ -f /sbin/depmod ] ; then
+				/sbin/depmod -a
+			fi
+			echo "${log} ERROR: [libcomposite didn't load]"
 		fi
-		echo "${log} ERROR: [libcomposite didn't load]"
 	fi
-
-#	echo
-#		echo "${log} libcomposite built-in"
-#		run_libcomposite
-#	fi
 }
 
 g_network="iSerialNumber=${usb_iserialnumber} iManufacturer=${usb_imanufacturer} iProduct=${usb_iproduct} host_addr=${cpsw_2_mac} dev_addr=${cpsw_1_mac}"
@@ -696,11 +650,11 @@ use_old_g_multi () {
 	else
 		#g_multi: Do we have a non-rootfs "fat" partition?
 		unset root_drive
-		root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep root=UUID= | awk -F 'root=' '{print $2}' || true)"
+		root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root=UUID= | awk -F 'root=' '{print $2}' || true)"
 		if [ ! "x${root_drive}" = "x" ] ; then
 			root_drive="$(/sbin/findfs ${root_drive} || true)"
 		else
-			root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep root= | awk -F 'root=' '{print $2}' || true)"
+			root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root= | awk -F 'root=' '{print $2}' || true)"
 		fi
 
 		if [ "x${root_drive}" = "x/dev/mmcblk0p1" ] || [ "x${root_drive}" = "x/dev/mmcblk1p1" ] ; then
@@ -749,18 +703,30 @@ if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
 	if [ "x${usb0}" = "xenable" ] ; then
 		echo "${log} Starting usb0 network"
 		# Auto-configuring the usb0 network interface:
-		$(dirname $0)/autoconfigure_usb0.sh || true
+		if [ -f /usr/bin/autoconfigure_usb0.sh ] ; then
+			/usr/bin/autoconfigure_usb0.sh || true
+		else
+			#Old Path... 2020.02.25
+			$(dirname $0)/autoconfigure_usb0.sh || true
+		fi
 	fi
 
 	if [ "x${usb1}" = "xenable" ] ; then
 		echo "${log} Starting usb1 network"
 		# Auto-configuring the usb1 network interface:
-		$(dirname $0)/autoconfigure_usb1.sh || true
+		if [ -f /usr/bin/autoconfigure_usb1.sh ] ; then
+			/usr/bin/autoconfigure_usb1.sh || true
+		else
+			#Old Path... 2020.02.25
+			$(dirname $0)/autoconfigure_usb1.sh || true
+		fi
 	fi
 
 	if [ "x${dnsmasq_usb0_usb1}" = "xenable" ] ; then
 		if [ -d /sys/kernel/config/usb_gadget ] ; then
-			/etc/init.d/udhcpd stop || true
+			if [ -f /var/run/udhcpd.pid ] ; then
+				/etc/init.d/udhcpd stop || true
+			fi
 
 			# do not write if there is a .SoftAp0 file
 			if [ -d /etc/dnsmasq.d/ ] ; then
@@ -768,31 +734,50 @@ if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
 					echo "${log} dnsmasq: setting up for usb0/usb1"
 					disable_connman_dnsproxy
 
-					wfile="/etc/dnsmasq.d/SoftAp0"
-					echo "interface=usb0" > ${wfile}
-					echo "interface=usb1" >> ${wfile}
-					echo "port=53" >> ${wfile}
-					echo "dhcp-authoritative" >> ${wfile}
-					echo "domain-needed" >> ${wfile}
-					echo "bogus-priv" >> ${wfile}
-					echo "expand-hosts" >> ${wfile}
-					echo "cache-size=2048" >> ${wfile}
-					echo "dhcp-range=usb0,192.168.7.1,192.168.7.1,2m" >> ${wfile}
-					echo "dhcp-range=usb1,192.168.6.1,192.168.6.1,2m" >> ${wfile}
-					echo "listen-address=127.0.0.1" >> ${wfile}
-					echo "listen-address=192.168.7.2" >> ${wfile}
-					echo "listen-address=192.168.6.2" >> ${wfile}
-					echo "dhcp-option=usb0,3" >> ${wfile}
-					echo "dhcp-option=usb0,6" >> ${wfile}
-					echo "dhcp-option=usb1,3" >> ${wfile}
-					echo "dhcp-option=usb1,6" >> ${wfile}
-		#FIXME: why was this added, without connman every ip get's 172.1.8.1????
-		#			echo "address=/#/172.1.8.1" >> ${wfile}
-					echo "dhcp-leasefile=/var/run/dnsmasq.leases" >> ${wfile}
+					if [ -f /usr/bin/bb_dnsmasq_config.sh ] ; then
+						/usr/bin/bb_dnsmasq_config.sh || true
+					else
+						wfile="/etc/dnsmasq.d/SoftAp0"
+						echo "interface=usb0" > ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "interface=usb1" >> ${wfile}
+						fi
+
+						echo "port=53" >> ${wfile}
+						echo "dhcp-authoritative" >> ${wfile}
+						echo "domain-needed" >> ${wfile}
+						echo "bogus-priv" >> ${wfile}
+						echo "expand-hosts" >> ${wfile}
+						echo "cache-size=2048" >> ${wfile}
+						echo "dhcp-range=usb0,${USB0_SUBNET}.1,${USB0_SUBNET}.1,2m" >> ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "dhcp-range=usb1,${USB1_SUBNET}.1,${USB1_SUBNET}.1,2m" >> ${wfile}
+						fi
+
+						echo "listen-address=127.0.0.1" >> ${wfile}
+						echo "listen-address=${USB0_ADDRESS}" >> ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "listen-address=${USB1_ADDRESS}" >> ${wfile}
+						fi
+
+						echo "dhcp-option=usb0,3" >> ${wfile}
+						echo "dhcp-option=usb0,6" >> ${wfile}
+
+						if [ "x${USB1_ENABLE}" = "xenable" ] ; then
+							echo "dhcp-option=usb1,3" >> ${wfile}
+							echo "dhcp-option=usb1,6" >> ${wfile}
+						fi
+
+						echo "dhcp-leasefile=/var/run/dnsmasq.leases" >> ${wfile}
+					fi
 
 					systemctl restart dnsmasq || true
+				else
+					echo "${log} LOG: dnsmasq is disabled in this script"
 				fi
-				echo "${log} LOG: dnsmasq is disabled in this script"
 			else
 				echo "${log} ERROR: dnsmasq is not installed"
 			fi
@@ -800,57 +785,62 @@ if [ ! "x${USB_NETWORK_DISABLED}" = "xyes" ]; then
 	fi
 fi
 
-#create_ap is now legacy, use connman...
-if [ -f /usr/bin/create_ap ] ; then
-	if [ "x${has_wifi}" = "xenable" ] ; then
-		ifconfig wlan0 down
-		ifconfig wlan0 hw ether ${cpsw_0_mac}
-		ifconfig wlan0 up || true
-		echo "${cpsw_0_mac}" > /etc/wlan0-mac
-		systemctl start create_ap &
+if [ "x${abi}" = "xab" ] ; then
+	#create_ap is now legacy, use connman...
+	if [ -f /usr/bin/create_ap ] ; then
+		if [ "x${has_wifi}" = "xenable" ] ; then
+			ifconfig wlan0 down
+			ifconfig wlan0 hw ether ${cpsw_0_mac}
+			ifconfig wlan0 up || true
+			echo "${cpsw_0_mac}" > /etc/wlan0-mac
+			systemctl start create_ap &
+		fi
 	fi
 fi
 
-#Just Cleanup /etc/issue, systemd starts up tty before these are updated...
-sed -i -e '/Address/d' /etc/issue || true
+if [ "x${board_bbgg}" = "xenable" ] ; then
+    ifconfig eth0 down
+    ifconfig eth0 hw ether ${cpsw_4_mac}
+    ifconfig eth0 up || true    
+fi
+
+if [ "x${abi}" = "xab" ] ; then
+	#Just Cleanup /etc/issue, systemd starts up tty before these are updated...
+	sed -i -e '/Address/d' /etc/issue || true
+fi
 
 check_getty_tty=$(systemctl is-active serial-getty@ttyGS0.service || true)
 if [ "x${check_getty_tty}" = "xinactive" ] ; then
 	systemctl restart serial-getty@ttyGS0.service || true
 fi
 
-if [ -f /opt/sgx/status ] ; then
-	sgx_status=$(cat /opt/sgx/status || true)
-	case "${sgx_status}" in
-	not_installed)
-		if [ -f /opt/sgx/ti-sgx-ti335x-modules-`uname -r`*_armhf.deb ] ; then
-			echo "${log} SGX: Installing Modules/ddk"
-			dpkg -i /opt/sgx/ti-sgx-ti335x-modules-`uname -r`*_armhf.deb || true
-			depmod -a `uname -r` || true
-			update-initramfs -uk `uname -r` || true
-
-			dpkg -i /opt/sgx/ti-sgx-ti33x-ddk-um*.deb || true
-			echo "installed" > /opt/sgx/status
-			sync
-		fi
-		;;
-#	installed)
-#		overlay="univ-emmc"
+#20200404: let's disable this, as we now have an imgtec specific blend, with modules/package pre-installed..
+#if [ -f /opt/sgx/status ] ; then
+#	sgx_status=$(cat /opt/sgx/status || true)
+#	case "${sgx_status}" in
+#	not_installed)
+#		if [ -f /opt/sgx/ti-sgx-ti335x-modules-`uname -r`*_armhf.deb ] ; then
+#			echo "${log} SGX: Installing Modules/ddk"
+#			dpkg -i /opt/sgx/ti-sgx-ti335x-modules-`uname -r`*_armhf.deb || true
+#			depmod -a `uname -r` || true
+#			update-initramfs -uk `uname -r` || true
+#
+#			dpkg -i /opt/sgx/ti-sgx-ti33x-ddk-um*.deb || true
+#			echo "installed" > /opt/sgx/status
+#			sync
+#		fi
 #		;;
-	esac
-fi
+##	installed)
+##		overlay="univ-emmc"
+##		;;
+#	esac
+#fi
 
 #legacy support of: /sys/kernel/debug mount permissions...
 #We now use: debugfs  /sys/kernel/debug  debugfs  mode=755,uid=root,gid=gpio,defaults  0  0
 #vs old: debugfs  /sys/kernel/debug  debugfs  defaults  0  0
 if [ "x${abi}" = "xab" ] ; then
-	if [ -d /sys/kernel/debug ] ; then
-		/bin/chmod -R ugo+x /sys/kernel/debug/ || true
-		if [ -d /sys/kernel/debug/pinctrl/44e10800.pinmux/ ] ; then
-			/bin/chgrp -R gpio /sys/kernel/debug/pinctrl/44e10800.pinmux/ || true
-			/bin/chmod -R g=u  /sys/kernel/debug/pinctrl/44e10800.pinmux/ || true
-		fi
-	fi
+	$(dirname $0)/legacy/old_debug_permissions.sh || true
 fi
 
 #legacy support of: 2014-05-14 (now taken care by the init flasher)
@@ -880,103 +870,75 @@ if [ "x${blue_fix_uarts}" = "xenable" ] ; then
 	fi
 fi
 
-unset enable_cape_universal
-enable_cape_universal=$(grep 'cape_universal=enable' /proc/cmdline || true)
-if [ ! "x${enable_cape_universal}" = "x" ] ; then
-	#loading cape-universal...
-	if [ -f /sys/devices/platform/bone_capemgr/slots ] ; then
+#Old Kernel Overlays, EOL in v4.14.x... (use u-boot overlays..)
+if [ "x${abi}" = "xac" ] ; then
+	$(dirname $0)/legacy/old_cape_universal.sh || true
+fi
 
-		#cape-universal Exports all pins not used by HDMIN and eMMC (including audio)
-		#cape-universaln Exports all pins not used by HDMI and eMMC (no audio pins are exported)
-		#cape-univ-emmc Exports pins used by eMMC, load if eMMC is disabled
-		#cape-univ-hdmi Exports pins used by HDMI video, load if HDMI is disabled
-		#cape-univ-audio Exports pins used by HDMI audio
+#Disabling Non-Valid Services..
+if [ -f /etc/systemd/system/multi-user.target.wants/bb-bbai-tether.service ] ; then
+	echo "${log} systemctl: disable bb-bbai-tether.service"
+	systemctl disable bb-bbai-tether.service || true
+fi
+if [ -f /etc/systemd/system/basic.target.wants/cmemk-module.service ] ; then
+	echo "${log} systemctl: cmemk-module.service"
+	systemctl disable cmemk-module.service || true
+fi
+if [ -f /etc/systemd/system/basic.target.wants/ti-mct-daemon.service ] ; then
+	echo "${log} systemctl: ti-mct-daemon.service"
+	systemctl disable ti-mct-daemon.service || true
+fi
 
-		unset stop_cape_load
-		#Make sure bone_capemgr.uboot_capemgr_enabled=1 wasn't passed to cmdline...
-		if [ "x${stop_cape_load}" = "x" ] ; then
-			check_enable_partno=$(grep bone_capemgr.uboot_capemgr_enabled=1 /proc/cmdline || true)
-			if [ ! "x${check_enable_partno}" = "x" ] ; then
-				stop_cape_load="stop"
-			fi
-		fi
-
-		#Make sure bone_capemgr.enable_partno wasn't passed to cmdline...
-		if [ "x${stop_cape_load}" = "x" ] ; then
-			check_enable_partno=$(grep bone_capemgr.enable_partno /proc/cmdline || true)
-			if [ ! "x${check_enable_partno}" = "x" ] ; then
-				stop_cape_load="stop"
-			fi
-		fi
-
-		#Make sure no custom overlays are loaded...
-		if [ "x${stop_cape_load}" = "x" ] ; then
-			check_cape_loaded=$(cat /sys/devices/platform/bone_capemgr/slots | awk '{print $3}' | grep 0 | tail -1 || true)
-			if [ ! "x${check_cape_loaded}" = "x" ] ; then
-				stop_cape_load="stop"
-			fi
-		fi
-
-		#Make sure we load the correct overlay based on lack/custom dtb's...
-		if [ "x${stop_cape_load}" = "x" ] ; then
-			unset overlay
-			check_dtb=$(cat /boot/uEnv.txt | grep -v '#' | grep dtb | tail -1 | awk -F '=' '{print $2}' || true)
-			if [ ! "x${check_dtb}" = "x" ] ; then
-				case "${check_dtb}" in
-				am335x-boneblack-overlay.dtb)
-					overlay="univ-all"
-					;;
-				am335x-boneblack-emmc-overlay.dtb)
-					overlay="univ-emmc"
-					;;
-				am335x-boneblack-hdmi-overlay.dtb)
-					overlay="univ-hdmi"
-					;;
-				am335x-boneblack-nhdmi-overlay.dtb)
-					overlay="univ-nhdmi"
-					;;
-				am335x-bonegreen-overlay.dtb)
-					overlay="univ-all"
-					;;
-				esac
-			else
-				machine=$(cat /proc/device-tree/model | sed "s/ /_/g" | tr -d '\000')
-				case "${machine}" in
-				TI_AM335x_BeagleBone)
-					overlay="univ-all"
-					;;
-				TI_AM335x_BeagleBone_Black_Wireless)
-					overlay="cape-universal"
-					;;
-				TI_AM335x_BeagleBone_Blue)
-					unset overlay
-					;;
-				TI_AM335x_BeagleBone_Black)
-					overlay="cape-universal"
-					;;
-				TI_AM335x_BeagleBone_Green)
-					overlay="univ-emmc"
-					;;
-				TI_AM335x_BeagleBone_Green_Wireless)
-					if [ -f /usr/local/lib/node_modules/node-red-node-beaglebone/.bbgw-dont-load ] ; then
-						unset overlay
-					else
-						overlay="univ-bbgw"
-					fi
-					;;
-				esac
-			fi
-			if [ ! "x${overlay}" = "x" ] ; then
-				dtbo="${overlay}-00A0.dtbo"
-				if [ -f /lib/firmware/${dtbo} ] ; then
-					if [ -f /usr/local/bin/config-pin ] ; then
-						/usr/local/bin/config-pin overlay ${overlay} || true
-					elif [ -f /usr/bin/config-pin ] ; then
-						/usr/bin/config-pin overlay ${overlay} || true
-					fi
-				fi
-			fi
+if [ "x${board_has_roboticscape}" = "xenable" ] ; then
+	unset check_service
+	check_service=$(systemctl is-enabled robotcontrol.service || true)
+	if [ "x${check_service}" = "xdisabled" ] ; then
+		echo "${log} systemctl: enable robotcontrol.service"
+		systemctl enable robotcontrol.service || true
+		if [ -f /opt/scripts/boot/default/robotcontrol_modules.conf ] ; then
+			cp -v /opt/scripts/boot/default/robotcontrol_modules.conf /etc/modules-load.d/robotcontrol_modules.conf || true
 		fi
 	fi
+	unset check_service
+	check_service=$(systemctl is-enabled rc_battery_monitor.service || true)
+	if [ "x${check_service}" = "xdisabled" ] ; then
+		echo "${log} systemctl: enable rc_battery_monitor.service"
+		systemctl enable rc_battery_monitor.service || true
+	fi
+else
+	if [ -f /etc/systemd/system/multi-user.target.wants/robotcontrol.service ] ; then
+		echo "${log} systemctl: disable robotcontrol.service"
+		systemctl disable robotcontrol.service || true
+		rm -f /etc/modules-load.d/robotcontrol_modules.conf || true
+	fi
+	if [ -f /etc/systemd/system/multi-user.target.wants/rc_battery_monitor.service ] ; then
+		echo "${log} systemctl: rc_battery_monitor.service"
+		systemctl disable rc_battery_monitor.service || true
+	fi
 fi
+
+if [ "x${board_has_wl18xx}" = "xenable" ] ; then
+	unset check_service
+	check_service=$(systemctl is-enabled bb-wl18xx-bluetooth.service || true)
+	if [ "x${check_service}" = "xdisabled" ] ; then
+		echo "${log} systemctl: enable bb-wl18xx-bluetooth.service"
+		systemctl enable bb-wl18xx-bluetooth.service || true
+	fi
+	unset check_service
+	check_service=$(systemctl is-enabled bb-wl18xx-wlan0.service || true)
+	if [ "x${check_service}" = "xdisabled" ] ; then
+		echo "${log} systemctl: enable bb-wl18xx-wlan0.service"
+		systemctl enable bb-wl18xx-wlan0.service || true
+	fi
+else
+	if [ -f /etc/systemd/system/multi-user.target.wants/bb-wl18xx-bluetooth.service ] ; then
+		echo "${log} systemctl: bb-wl18xx-bluetooth.service"
+		systemctl disable bb-wl18xx-bluetooth.service || true
+	fi
+	if [ -f /etc/systemd/system/multi-user.target.wants/bb-wl18xx-wlan0.service ] ; then
+		echo "${log} systemctl: bb-wl18xx-wlan0.service"
+		systemctl disable bb-wl18xx-wlan0.service || true
+	fi
+fi
+
 #

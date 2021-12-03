@@ -8,6 +8,15 @@ fi
 
 omap_bootloader () {
 	unset test_var
+	dd if=${drive} count=1 skip=1 bs=128k > /tmp/SPL.tmp 2>/dev/null
+	if [ -f /tmp/SPL.tmp ] ; then
+		test_var=$(grep -a "U-Boot SPL" /tmp/SPL.tmp | head -n1 || true)
+		if [ ! "x${test_var}" = "x" ] ; then
+			echo "bootloader:[${label}]:[${drive}]:[${test_var}]:[location: dd MBR]"
+		fi
+	fi
+
+	unset test_var
 	test_var=$(dd if=${drive} count=6 skip=393248 bs=1 2>/dev/null || true)
 	if [ "x${test_var}" = "xU-Boot" ] ; then
 		uboot=$(dd if=${drive} count=32 skip=393248 bs=1 2>/dev/null || true)
@@ -133,6 +142,13 @@ if [ -b /dev/mmcblk1 ] ; then
 	omap_bootloader
 fi
 
+if [ -f /proc/device-tree/chosen/base_dtb ] ; then
+	echo "UBOOT: Booted Device-Tree:[`cat /proc/device-tree/chosen/base_dtb`]"
+fi
+if [ -d /proc/device-tree/chosen/overlays/ ] ; then
+	ls /proc/device-tree/chosen/overlays/ -p | grep -v / | grep -v name | sed 's/^/UBOOT: Loaded Overlay:[/' | sed 's/$/]/'
+fi
+
 echo "kernel:[`uname -r`]"
 
 if [ -f /usr/bin/nodejs ] ; then
@@ -148,6 +164,7 @@ if [ -f /boot/uEnv.txt ] ; then
 fi
 
 if [ -f /boot/uEnv.txt ] ; then
+	echo "/boot/uEnv.txt Settings:"
 	unset test_var
 	test_var=$(cat /boot/uEnv.txt | grep -v '#' | grep enable_uboot_overlays=1 || true)
 	if [ "x${test_var}" != "x" ] ; then
@@ -161,6 +178,8 @@ fi
 
 echo "pkg check: to individually upgrade run: [sudo apt install --only-upgrade <pkg>]"
 pkg="bb-cape-overlays" ; dpkg_check_version
+pkg="bb-customizations" ; dpkg_check_version
+pkg="bb-usb-gadgets" ; dpkg_check_version
 pkg="bb-wl18xx-firmware" ; dpkg_check_version
 pkg="kmod" ; dpkg_check_version
 pkg="roboticscape" ; dpkg_check_version_replaced
@@ -194,8 +213,10 @@ echo "dmesg | grep pinctrl-single"
 dmesg | grep pinctrl-single || true
 echo "dmesg | grep gpio-of-helper"
 dmesg | grep gpio-of-helper || true
-echo "lsusb"
-lsusb || true
+if [ -f /usr/bin/lsusb ] ; then
+	echo "lsusb"
+	lsusb || true
+fi
 echo "END"
 
 #

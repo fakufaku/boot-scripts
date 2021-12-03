@@ -31,22 +31,22 @@ if [ ! -f /etc/ssh/ssh_host_ecdsa_key.pub ] ; then
 fi
 
 unset root_drive
-root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep root=UUID= | awk -F 'root=' '{print $2}' || true)"
+root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root=UUID= | awk -F 'root=' '{print $2}' || true)"
 if [ ! "x${root_drive}" = "x" ] ; then
 	root_drive="$(/sbin/findfs ${root_drive} || true)"
 else
-	root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep root= | awk -F 'root=' '{print $2}' || true)"
+	root_drive="$(cat /proc/cmdline | sed 's/ /\n/g' | grep ^root= | awk -F 'root=' '{print $2}' || true)"
 fi
 
 if [ ! "x${root_drive}" = "x" ] ; then
 	boot_drive="${root_drive%?}1"
 else
-	echo "Error: script halting, could detect drive..."
+	echo "Error: script halting, could not detect drive..."
 	exit 1
 fi
 
 single_partition () {
-	echo "${drive}p1" > /resizerootfs
+	echo "${drive}p1" > /var/resizerootfs
 	conf_boot_startmb=${conf_boot_startmb:-"4"}
 	sfdisk_fstype=${sfdisk_fstype:-"L"}
 	if [ "x${sfdisk_fstype}" = "x0x83" ] ; then
@@ -67,7 +67,7 @@ single_partition () {
 }
 
 dual_partition () {
-	echo "${drive}p2" > /resizerootfs
+	echo "${drive}p2" > /var/resizerootfs
 	conf_boot_startmb=${conf_boot_startmb:-"4"}
 	conf_boot_endmb=${conf_boot_endmb:-"96"}
 	sfdisk_fstype=${sfdisk_fstype:-"E"}
@@ -100,7 +100,7 @@ expand_partition () {
 	elif [ "x${boot_drive}" = "x/dev/mmcblk1p1" ] ; then
 		drive="/dev/mmcblk1"
 	else
-		echo "Error: script halting, could detect drive..."
+		echo "Error: script halting, could not detect drive..."
 		exit 1
 	fi
 
