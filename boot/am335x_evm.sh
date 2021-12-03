@@ -561,6 +561,10 @@ run_libcomposite () {
 			ln -s functions/mass_storage.usb0 configs/c.1/
 		fi
 
+		# now create audio device
+		mkdir -p functions/uac2.usb0
+		ln -s functions/uac2.usb0 configs/c.1
+
 		#ls /sys/class/udc
 		#v4.4.x-ti
 		if [ -d /sys/class/udc/musb-hdrc.0.auto ] ; then
